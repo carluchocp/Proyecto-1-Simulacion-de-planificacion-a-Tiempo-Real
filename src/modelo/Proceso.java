@@ -9,23 +9,15 @@ package modelo;
  * @author diego
  */
 public class Proceso {
-    // Datos estáticos del proceso
+    
     private String id;
     private String nombre;
     private int instruccionesTotales;
-    private String tipoRequerimiento; // "CPU" o "E/S"
-    private int deadline; 
+    private String tipoRequerimiento;
+    private int deadline;
     private int prioridad;
-    
-    // Elementos dinámicos del PCB
+    private int pc;
     private EstadoProceso estado;
-    private int pc; // Program Counter
-    private int mar; // Memory Address Register
-    private int ciclosRestantesDeadline;
-    
-    // Variables para E/S
-    private int ciclosParaExcepcion;
-    private int ciclosParaSatisfacer;
 
     public Proceso(String id, String nombre, int instruccionesTotales, String tipoRequerimiento, int deadline, int prioridad) {
         this.id = id;
@@ -34,22 +26,47 @@ public class Proceso {
         this.tipoRequerimiento = tipoRequerimiento;
         this.deadline = deadline;
         this.prioridad = prioridad;
-        
-        // El estado inicial siempre es NUEVO según el modelo [cite: 48]
-        this.estado = EstadoProceso.NUEVO;
         this.pc = 0;
-        this.mar = 0;
-        this.ciclosRestantesDeadline = deadline;
+        this.estado = EstadoProceso.NUEVO;
     }
 
-    // --- GETTERS Y SETTERS ---
-    // En NetBeans: Presiona Alt + Insert (o clic derecho -> Insert Code) 
-    // Selecciona "Getter and Setter" -> Marca la casilla "Proceso" para seleccionar todos -> Generate.
+    public void setEstado(EstadoProceso estado) {
+        this.estado = estado;
+    }
 
-    // Método para simular el avance de un ciclo de reloj en la CPU
+    public EstadoProceso getEstado() {
+        return estado;
+    }
+
     public void avanzarCiclo() {
         this.pc++;
-        this.mar++;
-        this.ciclosRestantesDeadline--;
+    }
+
+    public int getPc() {
+        return pc;
+    }
+
+    public int getInstruccionesTotales() {
+        return instruccionesTotales;
+    }
+
+    public String getTipoRequerimiento() {
+        return tipoRequerimiento;
+    }
+    
+    public String getId() {
+        return id;
+    }
+    
+    public String getNombre() {
+        return nombre;
+    }
+    
+    public int getDeadline() {
+        return deadline;
+    }
+    
+    public int getPrioridad() {
+        return prioridad;
     }
 }
