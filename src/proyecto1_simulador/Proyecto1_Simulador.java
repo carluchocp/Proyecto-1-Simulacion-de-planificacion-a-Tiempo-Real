@@ -4,17 +4,31 @@
  */
 package proyecto1_simulador;
 
-/**
- *
- * @author carluchocp
- */
+import modelo.Memoria;
+import modelo.GeneradorProcesos;
+import modelo.Reloj;
+import modelo.CPU;
+import modelo.Planificador;
+
 public class Proyecto1_Simulador {
 
-    /**
-     * @param args the command line arguments
-     */
     public static void main(String[] args) {
-        // TODO code application logic here
+        
+        Memoria memoria = new Memoria(10);
+        
+        GeneradorProcesos generador = new GeneradorProcesos();
+        generador.generarProcesosIniciales(memoria, 20);
+        
+        Reloj reloj = new Reloj();
+        
+        Planificador planificador = new Planificador(memoria, reloj);
+        
+        CPU cpu1 = new CPU(1, memoria, reloj);
+        CPU cpu2 = new CPU(2, memoria, reloj);
+        
+        reloj.start();
+        planificador.start();
+        cpu1.start();
+        cpu2.start();
     }
-    
 }
