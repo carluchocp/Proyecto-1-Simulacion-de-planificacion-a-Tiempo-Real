@@ -18,20 +18,27 @@ import java.awt.Color;
 import modelo.Reloj;
 import modelo.Memoria;
 import modelo.Proceso;
+import modelo.CPU;
 import estructuras.Nodo;
 
 public class Dashboard extends JFrame {
     
     private JLabel lblReloj;
+    private JTextArea txtCpu1;
+    private JTextArea txtCpu2;
     private JTextArea txtListos;
     private JTextArea txtBloqueados;
     private Reloj reloj;
     private Memoria memoria;
+    private CPU cpu1;
+    private CPU cpu2;
     private Timer timerUI;
 
-    public Dashboard(Reloj reloj, Memoria memoria) {
+    public Dashboard(Reloj reloj, Memoria memoria, CPU cpu1, CPU cpu2) {
         this.reloj = reloj;
         this.memoria = memoria;
+        this.cpu1 = cpu1;
+        this.cpu2 = cpu2;
         configurarVentana();
         inicializarComponentes();
         iniciarActualizacionUI();
@@ -39,7 +46,7 @@ public class Dashboard extends JFrame {
 
     private void configurarVentana() {
         setTitle("UNIMET-Sat RTOS Simulator");
-        setSize(900, 600);
+        setSize(900, 700);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
@@ -54,10 +61,26 @@ public class Dashboard extends JFrame {
         panelSuperior.add(lblReloj);
         add(panelSuperior, BorderLayout.NORTH);
 
-        JPanel panelCentral = new JPanel();
-        panelCentral.setLayout(new GridLayout(1, 2, 10, 10));
-        panelCentral.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        JPanel panelPrincipal = new JPanel(new GridLayout(2, 1, 10, 10));
+        panelPrincipal.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
+        JPanel panelCPUs = new JPanel(new GridLayout(1, 2, 10, 10));
+        txtCpu1 = new JTextArea();
+        txtCpu1.setEditable(false);
+        txtCpu1.setFont(new Font("Consolas", Font.BOLD, 16));
+        JScrollPane scrollCpu1 = new JScrollPane(txtCpu1);
+        scrollCpu1.setBorder(BorderFactory.createTitledBorder("CPU 1 - Ejecución"));
+
+        txtCpu2 = new JTextArea();
+        txtCpu2.setEditable(false);
+        txtCpu2.setFont(new Font("Consolas", Font.BOLD, 16));
+        JScrollPane scrollCpu2 = new JScrollPane(txtCpu2);
+        scrollCpu2.setBorder(BorderFactory.createTitledBorder("CPU 2 - Ejecución"));
+
+        panelCPUs.add(scrollCpu1);
+        panelCPUs.add(scrollCpu2);
+
+        JPanel panelColas = new JPanel(new GridLayout(1, 2, 10, 10));
         txtListos = new JTextArea();
         txtListos.setEditable(false);
         txtListos.setFont(new Font("Consolas", Font.PLAIN, 14));
@@ -70,18 +93,44 @@ public class Dashboard extends JFrame {
         JScrollPane scrollBloqueados = new JScrollPane(txtBloqueados);
         scrollBloqueados.setBorder(BorderFactory.createTitledBorder("Cola de Bloqueados"));
 
-        panelCentral.add(scrollListos);
-        panelCentral.add(scrollBloqueados);
+        panelColas.add(scrollListos);
+        panelColas.add(scrollBloqueados);
 
-        add(panelCentral, BorderLayout.CENTER);
+        panelPrincipal.add(panelCPUs);
+        panelPrincipal.add(panelColas);
+
+        add(panelPrincipal, BorderLayout.CENTER);
     }
 
     private void iniciarActualizacionUI() {
         timerUI = new Timer(100, e -> {
             lblReloj.setText("Ciclo de Reloj: " + reloj.getCicloGlobal());
+            actualizarCPUs();
             actualizarColas();
         });
         timerUI.start();
+    }
+
+    private void actualizarCPUs() {
+        Proceso p1 = cpu1.getProcesoActual();
+        if (p1 != null) {
+            txtCpu1.setText("\n  Proceso: " + p1.getNombre() + "\n" +
+                            "  ID: " + p1.getId() + "\n" +
+                            "  PC: " + p1.getPc() + " / " + p1.getInstruccionesTotales() + "\n" +
+                            "  Tipo: " + p1.getTipoRequerimiento());
+        } else {
+            txtCpu1.setText("\n  [Inactiva - Esperando proceso]");
+        }
+
+        Proceso p2 = cpu2.getProcesoActual();
+        if (p2 != null) {
+            txtCpu2.setText("\n  Proceso: " + p2.getNombre() + "\n" +
+                            "  ID: " + p2.getId() + "\n" +
+                            "  PC: " + p2.getPc() + " / " + p2.getInstruccionesTotales() + "\n" +
+                            "  Tipo: " + p2.getTipoRequerimiento());
+        } else {
+            txtCpu2.setText("\n  [Inactiva - Esperando proceso]");
+        }
     }
 
     private void actualizarColas() {
