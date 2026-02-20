@@ -4,11 +4,8 @@
  */
 package estructuras;
 
-/**
- *
- * @author diego
- */
 public class Cola<T> {
+    
     private Nodo<T> pFirst;
     private Nodo<T> pLast;
     private int size;
@@ -23,7 +20,6 @@ public class Cola<T> {
         return pFirst == null;
     }
 
-    // Enqueue (encolar)
     public void encolar(T dato) {
         Nodo<T> nuevo = new Nodo<>(dato);
         if (esVacia()) {
@@ -36,7 +32,6 @@ public class Cola<T> {
         size++;
     }
 
-    // Dequeue (desencolar)
     public T desencolar() {
         if (esVacia()) {
             return null;
@@ -50,12 +45,10 @@ public class Cola<T> {
         return dato;
     }
 
-    // Peek (ver el primero sin sacarlo)
-    public T proximo() {
-        if (esVacia()) return null;
-        return pFirst.getContenido();
+    public Nodo<T> getPrimerNodo() {
+        return pFirst;
     }
-    
+
     public int getSize() {
         return size;
     }

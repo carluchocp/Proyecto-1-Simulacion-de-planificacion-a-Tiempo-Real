@@ -27,7 +27,7 @@ public class Proyecto1_Simulador {
         CPU cpu1 = new CPU(1, memoria, reloj);
         CPU cpu2 = new CPU(2, memoria, reloj);
         
-        Dashboard dashboard = new Dashboard(reloj);
+        Dashboard dashboard = new Dashboard(reloj, memoria);
         dashboard.setVisible(true);
         
         reloj.start();
