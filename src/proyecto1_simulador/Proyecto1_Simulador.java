@@ -9,6 +9,7 @@ import modelo.GeneradorProcesos;
 import modelo.Reloj;
 import modelo.CPU;
 import modelo.Planificador;
+import vista.Dashboard;
 
 public class Proyecto1_Simulador {
 
@@ -25,6 +26,9 @@ public class Proyecto1_Simulador {
         
         CPU cpu1 = new CPU(1, memoria, reloj);
         CPU cpu2 = new CPU(2, memoria, reloj);
+        
+        Dashboard dashboard = new Dashboard(reloj);
+        dashboard.setVisible(true);
         
         reloj.start();
         planificador.start();
