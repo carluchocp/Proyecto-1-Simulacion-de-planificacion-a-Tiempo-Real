@@ -26,10 +26,14 @@ public class GeneradorProcesos {
     public void generarProcesosIniciales(Memoria memoria, int cantidad) {
         for (int i = 0; i < cantidad; i++) {
             Proceso p = crearProcesoAleatorio();
-            // Lo metemos a la memoria de forma segura (el método ya usa el semáforo)
-            memoria.encolarListo(p);
+            memoria.encolarNuevo(p);
+            // Admitir en RAM o suspender según capacidad
+            Proceso nuevo = memoria.desencolarNuevo();
+            if (nuevo != null) {
+                memoria.encolarListo(nuevo);
+            }
         }
-        System.out.println(cantidad + " procesos generados y encolados en Listos exitosamente.");
+        System.out.println(cantidad + " procesos generados exitosamente.");
     }
 
     /**

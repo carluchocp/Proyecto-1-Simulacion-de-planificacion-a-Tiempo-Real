@@ -46,6 +46,7 @@ public class CPU extends Thread {
             procesoActual = memoria.desencolarListo();
             if (procesoActual != null) {
                 procesoActual.setEstado(EstadoProceso.EJECUCION);
+                memoria.incrementarProcesosEnRAM();
             }
         }
 
@@ -54,7 +55,7 @@ public class CPU extends Thread {
 
             if (procesoActual.haTerminado()) {
                 procesoActual.setEstado(EstadoProceso.TERMINADO);
-                memoria.getColaTerminados().encolar(procesoActual);
+                memoria.encolarTerminado(procesoActual);
                 procesoActual = null;
             } else if (procesoActual.necesitaES()) {
                 procesoActual.setEstado(EstadoProceso.BLOQUEADO);

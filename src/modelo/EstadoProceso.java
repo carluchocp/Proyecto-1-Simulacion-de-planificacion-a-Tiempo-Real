@@ -26,7 +26,7 @@ public enum EstadoProceso {
     private static final Map<EstadoProceso, List<EstadoProceso>> transicionesValidas = new HashMap<>();
 
     static {
-        transicionesValidas.put(NUEVO, Arrays.asList(LISTO));
+        transicionesValidas.put(NUEVO, Arrays.asList(LISTO, LISTO_SUSPENDIDO));
         transicionesValidas.put(LISTO, Arrays.asList(EJECUCION, LISTO_SUSPENDIDO));
         transicionesValidas.put(EJECUCION, Arrays.asList(LISTO, BLOQUEADO, TERMINADO));
         transicionesValidas.put(BLOQUEADO, Arrays.asList(LISTO, BLOQUEADO_SUSPENDIDO));
