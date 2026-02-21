@@ -4,41 +4,83 @@
  */
 package vista;
 
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.JTextArea;
-import javax.swing.JScrollPane;
-import javax.swing.Timer;
-import javax.swing.BorderFactory;
-import java.awt.BorderLayout;
-import java.awt.GridLayout;
-import java.awt.Font;
-import java.awt.Color;
+import javax.swing.*;
+import javax.swing.border.TitledBorder;
+import java.awt.*;
+import java.awt.event.ActionEvent;
 import modelo.Reloj;
 import modelo.Memoria;
 import modelo.Proceso;
 import modelo.CPU;
+import modelo.Planificador;
+import modelo.GeneradorProcesos;
+import modelo.EstadoProceso;
+import planificadores.PoliticaPlanificacion;
 import estructuras.Nodo;
 
+/**
+ *
+ * @author carluchocp
+ */
 public class Dashboard extends JFrame {
-    
-    private JLabel lblReloj;
-    private JTextArea txtCpu1;
-    private JTextArea txtCpu2;
-    private JTextArea txtListos;
-    private JTextArea txtBloqueados;
+
+    // --- Referencias del sistema ---
     private Reloj reloj;
     private Memoria memoria;
     private CPU cpu1;
     private CPU cpu2;
+    private Planificador planificador;
+    private GeneradorProcesos generador;
+
+    // --- Panel superior: Reloj + Indicador SO/Usuario ---
+    private JLabel lblReloj;
+    private JLabel lblEstadoSistema;
+    private JLabel lblAlgoritmoActual;
+
+    // --- CPUs ---
+    private JTextArea txtCpu1;
+    private JTextArea txtCpu2;
+
+    // --- Colas ---
+    private JTextArea txtNuevos;
+    private JTextArea txtListos;
+    private JTextArea txtBloqueados;
+    private JTextArea txtListosSuspendidos;
+    private JTextArea txtBloqueadosSuspendidos;
+    private JTextArea txtTerminados;
+
+    // --- Log de eventos ---
+    private JTextArea txtLog;
+
+    // --- Métricas ---
+    private JLabel lblProcesosEnRAM;
+    private JLabel lblTotalProcesos;
+    private JLabel lblTerminados;
+    private JLabel lblDeadlineCumplidos;
+    private JLabel lblDeadlineFallidos;
+    private JLabel lblTasaExito;
+
+    // --- Controles ---
+    private JComboBox<PoliticaPlanificacion> cmbAlgoritmo;
+    private JSpinner spnQuantum;
+    private JSpinner spnVelocidad;
+
+    // --- Timer UI ---
     private Timer timerUI;
 
-    public Dashboard(Reloj reloj, Memoria memoria, CPU cpu1, CPU cpu2) {
+    // --- Contadores de métricas ---
+    private int totalTerminados = 0;
+    private int deadlineCumplidos = 0;
+    private int deadlineFallidos = 0;
+
+    public Dashboard(Reloj reloj, Memoria memoria, CPU cpu1, CPU cpu2,
+                     Planificador planificador, GeneradorProcesos generador) {
         this.reloj = reloj;
         this.memoria = memoria;
         this.cpu1 = cpu1;
         this.cpu2 = cpu2;
+        this.planificador = planificador;
+        this.generador = generador;
         configurarVentana();
         inicializarComponentes();
         iniciarActualizacionUI();
@@ -46,115 +88,352 @@ public class Dashboard extends JFrame {
 
     private void configurarVentana() {
         setTitle("UNIMET-Sat RTOS Simulator");
-        setSize(900, 700);
+        setSize(1400, 900);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
-        setLayout(new BorderLayout());
+        setLayout(new BorderLayout(5, 5));
     }
 
     private void inicializarComponentes() {
-        JPanel panelSuperior = new JPanel();
-        panelSuperior.setBackground(Color.DARK_GRAY);
-        lblReloj = new JLabel("Ciclo de Reloj: 0");
-        lblReloj.setFont(new Font("Consolas", Font.BOLD, 24));
-        lblReloj.setForeground(Color.WHITE);
-        panelSuperior.add(lblReloj);
+        // ===================== PANEL SUPERIOR =====================
+        JPanel panelSuperior = new JPanel(new BorderLayout());
+        panelSuperior.setBackground(new Color(30, 30, 30));
+        panelSuperior.setBorder(BorderFactory.createEmptyBorder(8, 15, 8, 15));
+
+        lblReloj = new JLabel("Ciclo: 0");
+        lblReloj.setFont(new Font("Consolas", Font.BOLD, 22));
+        lblReloj.setForeground(Color.GREEN);
+
+        lblEstadoSistema = new JLabel("  [Usuario]  ");
+        lblEstadoSistema.setFont(new Font("Consolas", Font.BOLD, 16));
+        lblEstadoSistema.setForeground(Color.CYAN);
+        lblEstadoSistema.setOpaque(true);
+        lblEstadoSistema.setBackground(new Color(50, 50, 50));
+
+        lblAlgoritmoActual = new JLabel("Algoritmo: FCFS");
+        lblAlgoritmoActual.setFont(new Font("Consolas", Font.BOLD, 16));
+        lblAlgoritmoActual.setForeground(Color.YELLOW);
+
+        JPanel panelIzqSup = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
+        panelIzqSup.setOpaque(false);
+        panelIzqSup.add(lblReloj);
+        panelIzqSup.add(lblEstadoSistema);
+        panelIzqSup.add(lblAlgoritmoActual);
+
+        panelSuperior.add(panelIzqSup, BorderLayout.WEST);
         add(panelSuperior, BorderLayout.NORTH);
 
-        JPanel panelPrincipal = new JPanel(new GridLayout(2, 1, 10, 10));
-        panelPrincipal.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        // ===================== PANEL CENTRAL =====================
+        JPanel panelCentral = new JPanel(new BorderLayout(5, 5));
+        panelCentral.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        JPanel panelCPUs = new JPanel(new GridLayout(1, 2, 10, 10));
-        txtCpu1 = new JTextArea();
-        txtCpu1.setEditable(false);
-        txtCpu1.setFont(new Font("Consolas", Font.BOLD, 16));
-        JScrollPane scrollCpu1 = new JScrollPane(txtCpu1);
-        scrollCpu1.setBorder(BorderFactory.createTitledBorder("CPU 1 - Ejecución"));
+        // --- CPUs (arriba) ---
+        JPanel panelCPUs = new JPanel(new GridLayout(1, 2, 8, 0));
+        txtCpu1 = crearTextArea(14, true);
+        txtCpu2 = crearTextArea(14, true);
+        panelCPUs.add(crearScrollConTitulo(txtCpu1, "CPU 1"));
+        panelCPUs.add(crearScrollConTitulo(txtCpu2, "CPU 2"));
+        panelCPUs.setPreferredSize(new Dimension(0, 160));
 
-        txtCpu2 = new JTextArea();
-        txtCpu2.setEditable(false);
-        txtCpu2.setFont(new Font("Consolas", Font.BOLD, 16));
-        JScrollPane scrollCpu2 = new JScrollPane(txtCpu2);
-        scrollCpu2.setBorder(BorderFactory.createTitledBorder("CPU 2 - Ejecución"));
+        // --- Colas (centro) ---
+        JPanel panelColas = new JPanel(new GridLayout(2, 3, 6, 6));
 
-        panelCPUs.add(scrollCpu1);
-        panelCPUs.add(scrollCpu2);
+        txtNuevos = crearTextArea(12, false);
+        txtListos = crearTextArea(12, false);
+        txtBloqueados = crearTextArea(12, false);
+        txtListosSuspendidos = crearTextArea(12, false);
+        txtBloqueadosSuspendidos = crearTextArea(12, false);
+        txtTerminados = crearTextArea(12, false);
 
-        JPanel panelColas = new JPanel(new GridLayout(1, 2, 10, 10));
-        txtListos = new JTextArea();
-        txtListos.setEditable(false);
-        txtListos.setFont(new Font("Consolas", Font.PLAIN, 14));
-        JScrollPane scrollListos = new JScrollPane(txtListos);
-        scrollListos.setBorder(BorderFactory.createTitledBorder("Cola de Listos (RAM)"));
+        panelColas.add(crearScrollConTitulo(txtNuevos, "Nuevos"));
+        panelColas.add(crearScrollConTitulo(txtListos, "Listos (RAM)"));
+        panelColas.add(crearScrollConTitulo(txtBloqueados, "Bloqueados"));
+        panelColas.add(crearScrollConTitulo(txtListosSuspendidos, "Listo/Suspendido"));
+        panelColas.add(crearScrollConTitulo(txtBloqueadosSuspendidos, "Bloqueado/Suspendido"));
+        panelColas.add(crearScrollConTitulo(txtTerminados, "Terminados"));
 
-        txtBloqueados = new JTextArea();
-        txtBloqueados.setEditable(false);
-        txtBloqueados.setFont(new Font("Consolas", Font.PLAIN, 14));
-        JScrollPane scrollBloqueados = new JScrollPane(txtBloqueados);
-        scrollBloqueados.setBorder(BorderFactory.createTitledBorder("Cola de Bloqueados"));
+        panelCentral.add(panelCPUs, BorderLayout.NORTH);
+        panelCentral.add(panelColas, BorderLayout.CENTER);
 
-        panelColas.add(scrollListos);
-        panelColas.add(scrollBloqueados);
+        add(panelCentral, BorderLayout.CENTER);
 
-        panelPrincipal.add(panelCPUs);
-        panelPrincipal.add(panelColas);
+        // ===================== PANEL DERECHO (Controles + Métricas) =====================
+        JPanel panelDerecho = new JPanel();
+        panelDerecho.setLayout(new BoxLayout(panelDerecho, BoxLayout.Y_AXIS));
+        panelDerecho.setPreferredSize(new Dimension(280, 0));
+        panelDerecho.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        add(panelPrincipal, BorderLayout.CENTER);
+        // --- Controles de algoritmo ---
+        JPanel panelAlgoritmo = new JPanel(new GridLayout(0, 1, 4, 4));
+        panelAlgoritmo.setBorder(BorderFactory.createTitledBorder("Planificación"));
+
+        cmbAlgoritmo = new JComboBox<>(PoliticaPlanificacion.values());
+        cmbAlgoritmo.setFont(new Font("Consolas", Font.PLAIN, 12));
+        panelAlgoritmo.add(new JLabel("Algoritmo:"));
+        panelAlgoritmo.add(cmbAlgoritmo);
+
+        JPanel panelQuantum = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        panelQuantum.add(new JLabel("Quantum:"));
+        spnQuantum = new JSpinner(new SpinnerNumberModel(5, 1, 100, 1));
+        panelQuantum.add(spnQuantum);
+        panelAlgoritmo.add(panelQuantum);
+
+        JButton btnCambiarAlg = new JButton("Cambiar Algoritmo");
+        btnCambiarAlg.addActionListener(e -> {
+            PoliticaPlanificacion pol = (PoliticaPlanificacion) cmbAlgoritmo.getSelectedItem();
+            int quantum = (int) spnQuantum.getValue();
+            planificador.cambiarAlgoritmo(pol, quantum);
+            agregarLog("Algoritmo cambiado a: " + pol.getDescripcion());
+        });
+        panelAlgoritmo.add(btnCambiarAlg);
+
+        panelDerecho.add(panelAlgoritmo);
+
+        // --- Velocidad del reloj ---
+        JPanel panelVelocidad = new JPanel(new GridLayout(0, 1, 4, 4));
+        panelVelocidad.setBorder(BorderFactory.createTitledBorder("Velocidad"));
+
+        JPanel panelSpnVel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        panelSpnVel.add(new JLabel("Ciclo (ms):"));
+        spnVelocidad = new JSpinner(new SpinnerNumberModel(
+                reloj.getDuracionCiclo(), 50, 5000, 50));
+        spnVelocidad.addChangeListener(e -> {
+            int ms = (int) spnVelocidad.getValue();
+            reloj.setDuracionCiclo(ms);
+            agregarLog("Velocidad cambiada a: " + ms + " ms/ciclo");
+        });
+        panelSpnVel.add(spnVelocidad);
+        panelVelocidad.add(panelSpnVel);
+
+        panelDerecho.add(panelVelocidad);
+
+        // --- Acciones ---
+        JPanel panelAcciones = new JPanel(new GridLayout(0, 1, 4, 4));
+        panelAcciones.setBorder(BorderFactory.createTitledBorder("Acciones"));
+
+        JButton btnGenerar20 = new JButton("Generar 20 Procesos Aleatorios");
+        btnGenerar20.addActionListener(e -> {
+            generador.generarProcesosIniciales(memoria, 20);
+            agregarLog("20 procesos aleatorios generados");
+        });
+        panelAcciones.add(btnGenerar20);
+
+        JButton btnGenerar1 = new JButton("Generar Tarea de Emergencia");
+        btnGenerar1.addActionListener(e -> {
+            Proceso p = generador.crearProcesoAleatorio();
+            memoria.admitirProceso(p);
+            agregarLog("Emergencia: " + p.getId() + " (" + p.getNombre() + ") creado");
+        });
+        panelAcciones.add(btnGenerar1);
+
+        panelDerecho.add(panelAcciones);
+
+        // --- Métricas ---
+        JPanel panelMetricas = new JPanel(new GridLayout(0, 1, 2, 2));
+        panelMetricas.setBorder(BorderFactory.createTitledBorder("Métricas"));
+
+        lblProcesosEnRAM = new JLabel("En RAM: 0 / 0");
+        lblTotalProcesos = new JLabel("Total procesos: 0");
+        lblTerminados = new JLabel("Terminados: 0");
+        lblDeadlineCumplidos = new JLabel("Deadline OK: 0");
+        lblDeadlineFallidos = new JLabel("Deadline FAIL: 0");
+        lblTasaExito = new JLabel("Tasa éxito: 0%");
+
+        Font fontMetrica = new Font("Consolas", Font.PLAIN, 12);
+        lblProcesosEnRAM.setFont(fontMetrica);
+        lblTotalProcesos.setFont(fontMetrica);
+        lblTerminados.setFont(fontMetrica);
+        lblDeadlineCumplidos.setFont(fontMetrica);
+        lblDeadlineFallidos.setFont(fontMetrica);
+        lblTasaExito.setFont(fontMetrica);
+        lblTasaExito.setForeground(new Color(0, 150, 0));
+
+        panelMetricas.add(lblProcesosEnRAM);
+        panelMetricas.add(lblTotalProcesos);
+        panelMetricas.add(lblTerminados);
+        panelMetricas.add(lblDeadlineCumplidos);
+        panelMetricas.add(lblDeadlineFallidos);
+        panelMetricas.add(lblTasaExito);
+
+        panelDerecho.add(panelMetricas);
+        add(panelDerecho, BorderLayout.EAST);
+
+        // ===================== PANEL INFERIOR (Log) =====================
+        txtLog = new JTextArea(6, 0);
+        txtLog.setEditable(false);
+        txtLog.setFont(new Font("Consolas", Font.PLAIN, 11));
+        txtLog.setBackground(new Color(20, 20, 20));
+        txtLog.setForeground(Color.GREEN);
+        JScrollPane scrollLog = new JScrollPane(txtLog);
+        scrollLog.setBorder(BorderFactory.createTitledBorder("Log de Eventos"));
+        add(scrollLog, BorderLayout.SOUTH);
     }
+
+    // ======================== Helpers UI ========================
+
+    private JTextArea crearTextArea(int fontSize, boolean bold) {
+        JTextArea ta = new JTextArea();
+        ta.setEditable(false);
+        ta.setFont(new Font("Consolas", bold ? Font.BOLD : Font.PLAIN, fontSize));
+        return ta;
+    }
+
+    private JScrollPane crearScrollConTitulo(JTextArea ta, String titulo) {
+        JScrollPane sp = new JScrollPane(ta);
+        sp.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(Color.GRAY), titulo,
+                TitledBorder.LEFT, TitledBorder.TOP,
+                new Font("Consolas", Font.BOLD, 12)));
+        return sp;
+    }
+
+    public void agregarLog(String mensaje) {
+        SwingUtilities.invokeLater(() -> {
+            txtLog.append("[Ciclo " + reloj.getCicloGlobal() + "] " + mensaje + "\n");
+            txtLog.setCaretPosition(txtLog.getDocument().getLength());
+        });
+    }
+
+    // ======================== Actualización periódica ========================
 
     private void iniciarActualizacionUI() {
         timerUI = new Timer(100, e -> {
-            lblReloj.setText("Ciclo de Reloj: " + reloj.getCicloGlobal());
+            lblReloj.setText("Ciclo: " + reloj.getCicloGlobal());
+            lblAlgoritmoActual.setText("Algoritmo: " + planificador.getPoliticaActual());
+            actualizarIndicadorSistema();
             actualizarCPUs();
             actualizarColas();
+            actualizarMetricas();
         });
         timerUI.start();
     }
 
-    private void actualizarCPUs() {
-        Proceso p1 = cpu1.getProcesoActual();
-        if (p1 != null) {
-            txtCpu1.setText("\n  Proceso: " + p1.getNombre() + "\n" +
-                            "  ID: " + p1.getId() + "\n" +
-                            "  PC: " + p1.getPc() + " / " + p1.getInstruccionesTotales() + "\n" +
-                            "  Tipo: " + (p1.isCpuBound() ? "CPU" : "E/S"));
+    private void actualizarIndicadorSistema() {
+        boolean soActivo = (cpu1.getProcesoActual() == null && !memoria.getColaListos().estaVacia())
+                        || (cpu2.getProcesoActual() == null && !memoria.getColaListos().estaVacia());
+        if (soActivo) {
+            lblEstadoSistema.setText("  [S.O.]  ");
+            lblEstadoSistema.setForeground(Color.RED);
         } else {
-            txtCpu1.setText("\n  [Inactiva - Esperando proceso]");
-        }
-
-        Proceso p2 = cpu2.getProcesoActual();
-        if (p2 != null) {
-            txtCpu2.setText("\n  Proceso: " + p2.getNombre() + "\n" +
-                            "  ID: " + p2.getId() + "\n" +
-                            "  PC: " + p2.getPc() + " / " + p2.getInstruccionesTotales() + "\n" +
-                            "  Tipo: " + (p2.isCpuBound() ? "CPU" : "E/S"));
-        } else {
-            txtCpu2.setText("\n  [Inactiva - Esperando proceso]");
+            lblEstadoSistema.setText("  [Usuario]  ");
+            lblEstadoSistema.setForeground(Color.CYAN);
         }
     }
 
-    private void actualizarColas() {
-        StringBuilder sbListos = new StringBuilder();
-        Nodo<Proceso> actualListo = memoria.getColaListos().getPrimerNodo();
-        while (actualListo != null) {
-            Proceso p = actualListo.getContenido();
-            sbListos.append("[").append(p.getId()).append("] ")
-                    .append(p.getNombre()).append(" | PC: ")
-                    .append(p.getPc()).append("/").append(p.getInstruccionesTotales())
-                    .append("\n");
-            actualListo = actualListo.getSiguiente();
-        }
-        txtListos.setText(sbListos.toString());
+    private void actualizarCPUs() {
+        txtCpu1.setText(formatearCPU(cpu1, 1));
+        txtCpu2.setText(formatearCPU(cpu2, 2));
+    }
 
-        StringBuilder sbBloqueados = new StringBuilder();
-        Nodo<Proceso> actualBloqueado = memoria.getColaBloqueados().getPrimerNodo();
-        while (actualBloqueado != null) {
-            Proceso p = actualBloqueado.getContenido();
-            sbBloqueados.append("[").append(p.getId()).append("] ")
-                        .append(p.getNombre())
-                        .append("\n");
-            actualBloqueado = actualBloqueado.getSiguiente();
+    private String formatearCPU(CPU cpu, int numCpu) {
+        Proceso p = cpu.getProcesoActual();
+        if (p == null) {
+            return "\n  [CPU " + numCpu + " Inactiva - Esperando proceso]";
         }
-        txtBloqueados.setText(sbBloqueados.toString());
+        return String.format(
+            "\n  %s (%s)\n" +
+            "  Estado: %s | Prioridad: %d\n" +
+            "  PC: %d / %d | MAR: %d\n" +
+            "  Deadline: %d (rest: %d)\n" +
+            "  Tipo: %s | %s | Quantum: %d",
+            p.getNombre(), p.getId(),
+            p.getEstado(), p.getPrioridad(),
+            p.getPc(), p.getInstruccionesTotales(), p.getMar(),
+            p.getDeadline(), p.getTiempoRestanteDeadline(),
+            p.isCpuBound() ? "CPU-Bound" : "IO-Bound",
+            p.isPeriodico() ? "Periódico(T=" + p.getPeriodo() + ")" : "Aperiódico",
+            cpu.getCiclosEnQuantum()
+        );
+    }
+
+    private void actualizarColas() {
+        txtNuevos.setText(formatearCola(memoria.getColaNuevos()));
+        txtListos.setText(formatearCola(memoria.getColaListos()));
+        txtBloqueados.setText(formatearColaBloqueados(memoria.getColaBloqueados()));
+        txtListosSuspendidos.setText(formatearCola(memoria.getColaListosSuspendidos()));
+        txtBloqueadosSuspendidos.setText(formatearCola(memoria.getColaBloqueadosSuspendidos()));
+        txtTerminados.setText(formatearColaSimple(memoria.getColaTerminados()));
+    }
+
+    private String formatearCola(estructuras.Cola<Proceso> cola) {
+        StringBuilder sb = new StringBuilder();
+        Nodo<Proceso> actual = cola.getPrimerNodo();
+        while (actual != null) {
+            Proceso p = actual.getContenido();
+            sb.append(String.format("[%s] %s | P:%d | PC:%d/%d | DL:%d\n",
+                    p.getId(), p.getNombre(), p.getPrioridad(),
+                    p.getPc(), p.getInstruccionesTotales(),
+                    p.getTiempoRestanteDeadline()));
+            actual = actual.getSiguiente();
+        }
+        if (sb.length() == 0) sb.append("(vacía)");
+        return sb.toString();
+    }
+
+    private String formatearColaBloqueados(estructuras.Cola<Proceso> cola) {
+        StringBuilder sb = new StringBuilder();
+        Nodo<Proceso> actual = cola.getPrimerNodo();
+        while (actual != null) {
+            Proceso p = actual.getContenido();
+            sb.append(String.format("[%s] %s | E/S rest: %d | DL:%d\n",
+                    p.getId(), p.getNombre(),
+                    p.getCiclosESRestantes(),
+                    p.getTiempoRestanteDeadline()));
+            actual = actual.getSiguiente();
+        }
+        if (sb.length() == 0) sb.append("(vacía)");
+        return sb.toString();
+    }
+
+    private String formatearColaSimple(estructuras.Cola<Proceso> cola) {
+        StringBuilder sb = new StringBuilder();
+        Nodo<Proceso> actual = cola.getPrimerNodo();
+        while (actual != null) {
+            Proceso p = actual.getContenido();
+            sb.append(String.format("[%s] %s | Instr: %d\n",
+                    p.getId(), p.getNombre(), p.getInstruccionesTotales()));
+            actual = actual.getSiguiente();
+        }
+        if (sb.length() == 0) sb.append("(vacía)");
+        return sb.toString();
+    }
+
+    private void actualizarMetricas() {
+        int enRAM = memoria.getProcesosEnRAM();
+        int capMax = memoria.getCapacidadMaxima();
+        int terminados = memoria.getColaTerminados().getTamano();
+
+        // Contar deadlines cumplidos/fallidos de terminados
+        int cumplidos = 0;
+        int fallidos = 0;
+        Nodo<Proceso> actual = memoria.getColaTerminados().getPrimerNodo();
+        while (actual != null) {
+            Proceso p = actual.getContenido();
+            if (p.getTiempoRestanteDeadline() >= 0) {
+                cumplidos++;
+            } else {
+                fallidos++;
+            }
+            actual = actual.getSiguiente();
+        }
+
+        int totalEnSistema = memoria.getColaNuevos().getTamano()
+                + memoria.getColaListos().getTamano()
+                + memoria.getColaBloqueados().getTamano()
+                + memoria.getColaListosSuspendidos().getTamano()
+                + memoria.getColaBloqueadosSuspendidos().getTamano()
+                + terminados
+                + (cpu1.getProcesoActual() != null ? 1 : 0)
+                + (cpu2.getProcesoActual() != null ? 1 : 0);
+
+        double tasa = terminados > 0 ? (cumplidos * 100.0 / terminados) : 0;
+
+        lblProcesosEnRAM.setText("En RAM: " + enRAM + " / " + capMax);
+        lblTotalProcesos.setText("Total procesos: " + totalEnSistema);
+        lblTerminados.setText("Terminados: " + terminados);
+        lblDeadlineCumplidos.setText("Deadline OK: " + cumplidos);
+        lblDeadlineFallidos.setText("Deadline FAIL: " + fallidos);
+        lblTasaExito.setText(String.format("Tasa éxito: %.1f%%", tasa));
+        lblTasaExito.setForeground(tasa >= 80 ? new Color(0, 150, 0) : Color.RED);
     }
 }

@@ -27,7 +27,7 @@ public class Proyecto1_Simulador {
         
         Planificador planificador = new Planificador(memoria, reloj, cpu1, cpu2);
         
-        Dashboard dashboard = new Dashboard(reloj, memoria, cpu1, cpu2);
+        Dashboard dashboard = new Dashboard(reloj, memoria, cpu1, cpu2, planificador, generador);
         dashboard.setVisible(true);
         
         reloj.start();

@@ -52,11 +52,8 @@ public class Reloj extends Thread {
         return duracionCiclo;
     }
 
-    
     public void setDuracionCiclo(int duracionCiclo) {
-        if (duracionCiclo > 0) {
-            this.duracionCiclo = duracionCiclo;
-        }
+        this.duracionCiclo = duracionCiclo;
     }
 
 
