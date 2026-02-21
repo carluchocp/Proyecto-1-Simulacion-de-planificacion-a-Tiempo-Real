@@ -154,7 +154,12 @@ public class Planificador extends Thread {
 
     // ======================== Gestión de bloqueados ========================
 
+    /**
+     * 7.3: BLOQUEADO → LISTO cuando ciclosESRestantes llega a 0
+     * 7.4: Si la RAM está llena, BLOQUEADO → BLOQUEADO_SUSPENDIDO
+     */
     private void gestionarBloqueados() {
+        // Decrementar ciclos de E/S restantes
         Nodo<Proceso> actual = memoria.getColaBloqueados().getPrimerNodo();
         while (actual != null) {
             actual.getContenido().setCiclosESRestantes(
@@ -162,19 +167,28 @@ public class Planificador extends Thread {
             actual = actual.getSiguiente();
         }
 
+        // Separar: los que terminaron E/S vs los que siguen bloqueados
         Cola<Proceso> sigueEnBloqueado = new Cola<>();
         Proceso p;
         while ((p = memoria.getColaBloqueados().desencolar()) != null) {
             if (p.getCiclosESRestantes() <= 0) {
+                // 7.3: E/S satisfecha → BLOQUEADO → LISTO
                 p.setEstado(EstadoProceso.LISTO);
                 memoria.getColaListos().encolar(p);
-                System.out.println("[PLANIFICADOR] " + p.getId() + " desbloqueado -> Listo");
+                System.out.println("[PLANIFICADOR] " + p.getId()
+                        + " E/S completada -> Listo");
             } else {
                 sigueEnBloqueado.encolar(p);
             }
         }
+        // Re-encolar los que siguen bloqueados
         while ((p = sigueEnBloqueado.desencolar()) != null) {
             memoria.getColaBloqueados().encolar(p);
+        }
+
+        // 7.4: Si RAM está saturada, suspender bloqueados menos urgentes
+        while (memoria.ramLlena() && !memoria.getColaBloqueados().estaVacia()) {
+            memoria.suspenderMenosUrgente();
         }
     }
 

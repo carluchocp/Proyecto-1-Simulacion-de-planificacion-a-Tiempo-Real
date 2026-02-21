@@ -33,7 +33,8 @@ public class Proceso {
     private int periodo;                // solo aplica si es periódico
 
     // --- E/S ---
-    private int ciclosParaES;           // cada cuántos ciclos requiere E/S
+    private int ciclosParaES;           // 7.1: cada cuántos ciclos genera excepción de E/S
+    private int duracionES;             // 7.2: cuántos ciclos necesita para satisfacer la E/S
     private int ciclosESRestantes;      // ciclos que faltan para terminar E/S actual
 
     // --- CPU vs E/S ---
@@ -44,7 +45,7 @@ public class Proceso {
     public Proceso(String id, String nombre, int instruccionesTotales,
                    int prioridad, int deadline,
                    boolean periodico, int periodo,
-                   int ciclosParaES, boolean cpuBound) {
+                   int ciclosParaES, int duracionES, boolean cpuBound) {
         this.id = id;
         this.nombre = nombre;
         this.instruccionesTotales = instruccionesTotales;
@@ -54,6 +55,7 @@ public class Proceso {
         this.periodico = periodico;
         this.periodo = periodico ? periodo : 0;
         this.ciclosParaES = ciclosParaES;
+        this.duracionES = duracionES;
         this.cpuBound = cpuBound;
 
         this.estado = EstadoProceso.NUEVO;
@@ -118,6 +120,9 @@ public class Proceso {
     public int getCiclosParaES() { return ciclosParaES; }
     public void setCiclosParaES(int c) { this.ciclosParaES = c; }
 
+    public int getDuracionES() { return duracionES; }
+    public void setDuracionES(int d) { this.duracionES = d; }
+
     public int getCiclosESRestantes() { return ciclosESRestantes; }
     public void setCiclosESRestantes(int c) { this.ciclosESRestantes = c; }
 
@@ -135,6 +140,10 @@ public class Proceso {
         return instruccionesEjecutadas >= instruccionesTotales;
     }
 
+    /**
+     * 7.1: Determina si el proceso necesita generar una excepción de E/S.
+     * Ocurre cada ciclosParaES instrucciones ejecutadas.
+     */
     public boolean necesitaES() {
         return ciclosParaES > 0
                 && instruccionesEjecutadas > 0
@@ -151,10 +160,10 @@ public class Proceso {
         return String.format(
             "Proceso[id=%s, nombre='%s', estado=%s, PC=%d, MAR=%d, prioridad=%d, "
             + "deadline=%d, deadlineRest=%d, instr=%d/%d, periodico=%b, periodo=%d, "
-            + "ciclosES=%d, ciclosESRest=%d, cpuBound=%b]",
+            + "ciclosParaES=%d, duracionES=%d, ciclosESRest=%d, cpuBound=%b]",
             id, nombre, estado, pc, mar, prioridad,
             deadline, tiempoRestanteDeadline,
             instruccionesEjecutadas, instruccionesTotales,
-            periodico, periodo, ciclosParaES, ciclosESRestantes, cpuBound);
+            periodico, periodo, ciclosParaES, duracionES, ciclosESRestantes, cpuBound);
     }
 }

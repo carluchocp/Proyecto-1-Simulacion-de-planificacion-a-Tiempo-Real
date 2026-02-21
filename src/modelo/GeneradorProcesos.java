@@ -45,7 +45,22 @@ public class GeneradorProcesos {
         
         // CPU-bound (true) o IO-bound (false) con 50% probabilidad
         boolean cpuBound = random.nextBoolean();
-        
+
+        // 7.1: Cada cuántos ciclos genera excepción de E/S
+        int ciclosParaES;
+        // 7.2: Cuántos ciclos necesita para satisfacer la E/S
+        int duracionES;
+
+        if (cpuBound) {
+            // CPU-bound: E/S infrecuente y corta
+            ciclosParaES = 15 + random.nextInt(20);  // cada 15-34 ciclos
+            duracionES = 1 + random.nextInt(3);       // 1-3 ciclos para satisfacer
+        } else {
+            // IO-bound: E/S frecuente y más larga
+            ciclosParaES = 3 + random.nextInt(8);     // cada 3-10 ciclos
+            duracionES = 3 + random.nextInt(6);       // 3-8 ciclos para satisfacer
+        }
+
         // Deadline (mayor a instrucciones, +10 a +50 extra)
         int deadline = instrucciones + random.nextInt(41) + 10;
         
@@ -56,13 +71,8 @@ public class GeneradorProcesos {
         boolean periodico = random.nextInt(10) < 3;
         int periodo = periodico ? (random.nextInt(20) + 10) : 0;
 
-        // Ciclos para E/S: si es IO-bound cada 3-8 ciclos, si es CPU-bound cada 15-30 o 0
-        int ciclosParaES = cpuBound 
-            ? (random.nextBoolean() ? 0 : random.nextInt(16) + 15)
-            : (random.nextInt(6) + 3);
-
         // Retornamos el proceso recién fabricado
         return new Proceso(id, nombre, instrucciones, prioridad, deadline,
-                           periodico, periodo, ciclosParaES, cpuBound);
+                           periodico, periodo, ciclosParaES, duracionES, cpuBound);
     }
 }

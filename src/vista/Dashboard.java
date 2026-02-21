@@ -468,13 +468,15 @@ public class Dashboard extends JFrame implements InterrupcionListener {
             "  Estado: %s | Prioridad: %d\n" +
             "  PC: %d / %d | MAR: %d\n" +
             "  Deadline: %d (rest: %d)\n" +
-            "  Tipo: %s | %s | Quantum: %d",
+            "  Tipo: %s | %s\n" +
+            "  E/S cada: %d ciclos | Dur E/S: %d | Quantum: %d",
             p.getNombre(), p.getId(),
             p.getEstado(), p.getPrioridad(),
             p.getPc(), p.getInstruccionesTotales(), p.getMar(),
             p.getDeadline(), p.getTiempoRestanteDeadline(),
             p.isCpuBound() ? "CPU-Bound" : "IO-Bound",
             p.isPeriodico() ? "Periódico(T=" + p.getPeriodo() + ")" : "Aperiódico",
+            p.getCiclosParaES(), p.getDuracionES(),
             cpu.getCiclosEnQuantum()
         );
     }
@@ -508,9 +510,9 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         Nodo<Proceso> actual = cola.getPrimerNodo();
         while (actual != null) {
             Proceso p = actual.getContenido();
-            sb.append(String.format("[%s] %s | E/S rest: %d | DL:%d\n",
+            sb.append(String.format("[%s] %s | E/S: %d/%d | DL:%d\n",
                     p.getId(), p.getNombre(),
-                    p.getCiclosESRestantes(),
+                    p.getCiclosESRestantes(), p.getDuracionES(),
                     p.getTiempoRestanteDeadline()));
             actual = actual.getSiguiente();
         }
