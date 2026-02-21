@@ -97,12 +97,29 @@ public class Planificador extends Thread {
     }
 
     private synchronized void cicloPlanificacion() {
+        admitirNuevos();
         actualizarDeadlines();
         gestionarBloqueados();
         verificarPreemption(cpu1);
         verificarPreemption(cpu2);
         asignarProcesosACPUs();
         memoria.intentarReactivar();
+    }
+
+    // ======================== Admisión de nuevos ========================
+
+    /**
+     * Mueve procesos de la cola de Nuevos a Listos (o Listo/Suspendido si RAM llena).
+     * Solo admite uno por ciclo para simular el overhead de admisión.
+     */
+    private void admitirNuevos() {
+        if (!memoria.getColaNuevos().estaVacia()) {
+            Proceso p = memoria.getColaNuevos().desencolar();
+            if (p != null) {
+                memoria.admitirProceso(p);
+                System.out.println("[PLANIFICADOR] Admitido: " + p.getId() + " -> " + p.getEstado());
+            }
+        }
     }
 
     // ======================== Gestión de deadlines ========================

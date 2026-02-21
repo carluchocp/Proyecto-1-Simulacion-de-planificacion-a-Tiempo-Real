@@ -249,8 +249,9 @@ public class Dashboard extends JFrame {
         JButton btnGenerar1 = new JButton("Tarea de Emergencia");
         btnGenerar1.addActionListener(e -> {
             Proceso p = generador.crearProcesoAleatorio();
+            // Emergencia: salta la cola de Nuevos, va directo a RAM
             memoria.admitirProceso(p);
-            agregarLog("Emergencia: " + p.getId() + " creado");
+            agregarLog("EMERGENCIA: " + p.getId() + " admitido directo -> " + p.getEstado());
         });
         panelAcciones.add(btnGenerar1);
         panelDerecho.add(panelAcciones);
