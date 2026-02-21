@@ -22,10 +22,10 @@ public class Proyecto1_Simulador {
         
         Reloj reloj = new Reloj();
         
-        Planificador planificador = new Planificador(memoria, reloj);
-        
         CPU cpu1 = new CPU(1, memoria, reloj);
         CPU cpu2 = new CPU(2, memoria, reloj);
+        
+        Planificador planificador = new Planificador(memoria, reloj, cpu1, cpu2);
         
         Dashboard dashboard = new Dashboard(reloj, memoria, cpu1, cpu2);
         dashboard.setVisible(true);
