@@ -15,6 +15,10 @@ import modelo.CPU;
 import modelo.Planificador;
 import modelo.GeneradorProcesos;
 import modelo.EstadoProceso;
+import modelo.GeneradorInterrupciones;
+import modelo.InterrupcionListener;
+import modelo.TipoInterrupcion;
+import modelo.Interrupcion;
 import planificadores.PoliticaPlanificacion;
 import estructuras.Nodo;
 
@@ -22,7 +26,7 @@ import estructuras.Nodo;
  *
  * @author carluchocp
  */
-public class Dashboard extends JFrame {
+public class Dashboard extends JFrame implements InterrupcionListener {
 
     // --- Referencias del sistema ---
     private Reloj reloj;
@@ -31,6 +35,7 @@ public class Dashboard extends JFrame {
     private CPU cpu2;
     private Planificador planificador;
     private GeneradorProcesos generador;
+    private GeneradorInterrupciones generadorInterrupciones;
 
     // --- Panel superior: Reloj + Indicador SO/Usuario ---
     private JLabel lblReloj;
@@ -59,6 +64,7 @@ public class Dashboard extends JFrame {
     private JLabel lblDeadlineCumplidos;
     private JLabel lblDeadlineFallidos;
     private JLabel lblTasaExito;
+    private JLabel lblInterrupciones;
 
     // --- Controles ---
     private JComboBox<PoliticaPlanificacion> cmbAlgoritmo;
@@ -77,16 +83,23 @@ public class Dashboard extends JFrame {
     private int deadlineFallidos = 0;
 
     public Dashboard(Reloj reloj, Memoria memoria, CPU cpu1, CPU cpu2,
-                     Planificador planificador, GeneradorProcesos generador) {
+                     Planificador planificador, GeneradorProcesos generador,
+                     GeneradorInterrupciones generadorInterrupciones) {
         this.reloj = reloj;
         this.memoria = memoria;
         this.cpu1 = cpu1;
         this.cpu2 = cpu2;
         this.planificador = planificador;
         this.generador = generador;
+        this.generadorInterrupciones = generadorInterrupciones;
         configurarVentana();
         inicializarComponentes();
         iniciarActualizacionUI();
+    }
+
+    @Override
+    public void onEventoInterrupcion(String mensaje) {
+        agregarLog(mensaje);
     }
 
     private void configurarVentana() {
@@ -254,6 +267,35 @@ public class Dashboard extends JFrame {
             agregarLog("EMERGENCIA: " + p.getId() + " admitido directo -> " + p.getEstado());
         });
         panelAcciones.add(btnGenerar1);
+
+        JButton btnInterrupcion = new JButton("⚡ FORZAR INTERRUPCION ⚡");
+        btnInterrupcion.setFont(new Font("Consolas", Font.BOLD, 13));
+        btnInterrupcion.setBackground(new Color(200, 0, 0));
+        btnInterrupcion.setForeground(Color.WHITE);
+        btnInterrupcion.setOpaque(true);
+        btnInterrupcion.setBorderPainted(false);
+        btnInterrupcion.setFocusPainted(false);
+        btnInterrupcion.addActionListener(e -> {
+            TipoInterrupcion[] tipos = TipoInterrupcion.values();
+            TipoInterrupcion tipo = tipos[new java.util.Random().nextInt(tipos.length)];
+
+            CPU cpuObj = new java.util.Random().nextBoolean() ? cpu1 : cpu2;
+            if (cpuObj.isEnInterrupcion()) {
+                cpuObj = (cpuObj == cpu1) ? cpu2 : cpu1;
+            }
+            if (cpuObj.isEnInterrupcion()) {
+                agregarLog("[INTERRUPCION] Ambas CPUs ocupadas con ISR, reintente luego");
+                return;
+            }
+
+            Interrupcion inter = new Interrupcion(
+                    (int)(System.currentTimeMillis() % 10000), tipo, cpuObj, reloj, planificador);
+            inter.setListener(this);
+            inter.start();
+            agregarLog("⚡ INTERRUPCION MANUAL: " + tipo.getDescripcion() + " en CPU-" + cpuObj.getCpuId());
+        });
+        panelAcciones.add(btnInterrupcion);
+
         panelDerecho.add(panelAcciones);
 
         // --- Métricas ---
@@ -266,6 +308,7 @@ public class Dashboard extends JFrame {
         lblDeadlineCumplidos = new JLabel("Deadline OK: 0");
         lblDeadlineFallidos = new JLabel("Deadline FAIL: 0");
         lblTasaExito = new JLabel("Tasa éxito: 0%");
+        lblInterrupciones = new JLabel("Interrupciones: 0");
 
         Font fontMetrica = new Font("Consolas", Font.PLAIN, 12);
         lblProcesosEnRAM.setFont(fontMetrica);
@@ -282,6 +325,7 @@ public class Dashboard extends JFrame {
         panelMetricas.add(lblDeadlineCumplidos);
         panelMetricas.add(lblDeadlineFallidos);
         panelMetricas.add(lblTasaExito);
+        panelMetricas.add(lblInterrupciones);
         panelDerecho.add(panelMetricas);
 
         add(panelDerecho, BorderLayout.EAST);
@@ -316,6 +360,7 @@ public class Dashboard extends JFrame {
         planificador.reanudar();
         cpu1.reanudar();
         cpu2.reanudar();
+        generadorInterrupciones.reanudar();
 
         lblEstadoSistema.setText("  [Ejecutando]  ");
         lblEstadoSistema.setForeground(Color.GREEN);
@@ -327,6 +372,7 @@ public class Dashboard extends JFrame {
             planificador.reanudar();
             cpu1.reanudar();
             cpu2.reanudar();
+            generadorInterrupciones.reanudar();
             btnPausar.setText("PAUSAR");
             btnPausar.setBackground(new Color(200, 150, 0));
             lblEstadoSistema.setText("  [Ejecutando]  ");
@@ -337,6 +383,7 @@ public class Dashboard extends JFrame {
             planificador.pausar();
             cpu1.pausar();
             cpu2.pausar();
+            generadorInterrupciones.pausar();
             btnPausar.setText("REANUDAR");
             btnPausar.setBackground(new Color(0, 150, 0));
             lblEstadoSistema.setText("  [Pausado]  ");
@@ -387,6 +434,11 @@ public class Dashboard extends JFrame {
     }
 
     private void actualizarIndicadorSistema() {
+        if (cpu1.isEnInterrupcion() || cpu2.isEnInterrupcion()) {
+            lblEstadoSistema.setText("  [S.O. - ISR]  ");
+            lblEstadoSistema.setForeground(Color.RED);
+            return;
+        }
         boolean soActivo = (cpu1.getProcesoActual() == null && !memoria.getColaListos().estaVacia())
                         || (cpu2.getProcesoActual() == null && !memoria.getColaListos().estaVacia());
         if (soActivo) {
@@ -404,6 +456,9 @@ public class Dashboard extends JFrame {
     }
 
     private String formatearCPU(CPU cpu, int numCpu) {
+        if (cpu.isEnInterrupcion()) {
+            return "\n  [CPU " + numCpu + " - ATENDIENDO INTERRUPCION (ISR)]";
+        }
         Proceso p = cpu.getProcesoActual();
         if (p == null) {
             return "\n  [CPU " + numCpu + " Inactiva - Esperando proceso]";
@@ -481,17 +536,13 @@ public class Dashboard extends JFrame {
         int capMax = memoria.getCapacidadMaxima();
         int terminados = memoria.getColaTerminados().getTamano();
 
-        // Contar deadlines cumplidos/fallidos de terminados
         int cumplidos = 0;
         int fallidos = 0;
         Nodo<Proceso> actual = memoria.getColaTerminados().getPrimerNodo();
         while (actual != null) {
             Proceso p = actual.getContenido();
-            if (p.getTiempoRestanteDeadline() >= 0) {
-                cumplidos++;
-            } else {
-                fallidos++;
-            }
+            if (p.getTiempoRestanteDeadline() >= 0) { cumplidos++; }
+            else { fallidos++; }
             actual = actual.getSiguiente();
         }
 
@@ -513,5 +564,6 @@ public class Dashboard extends JFrame {
         lblDeadlineFallidos.setText("Deadline FAIL: " + fallidos);
         lblTasaExito.setText(String.format("Tasa éxito: %.1f%%", tasa));
         lblTasaExito.setForeground(tasa >= 80 ? new Color(0, 150, 0) : Color.RED);
+        lblInterrupciones.setText("Interrupciones: " + generadorInterrupciones.getContadorInterrupciones());
     }
 }

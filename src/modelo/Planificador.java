@@ -182,7 +182,7 @@ public class Planificador extends Thread {
 
     private void verificarPreemption(CPU cpu) {
         Proceso enCPU = cpu.getProcesoActual();
-        if (enCPU == null) return;
+        if (enCPU == null || cpu.isEnInterrupcion()) return;
 
         if (algoritmo.usaQuantum() && cpu.getCiclosEnQuantum() >= algoritmo.getQuantum()) {
             System.out.println("[PREEMPTION] Quantum expirado para " + enCPU.getId());
@@ -199,11 +199,13 @@ public class Planificador extends Thread {
     // ======================== Asignación a CPUs ========================
 
     private void asignarProcesosACPUs() {
-        if (cpu1.getProcesoActual() == null && !memoria.getColaListos().estaVacia()) {
+        if (cpu1.getProcesoActual() == null && !cpu1.isEnInterrupcion()
+                && !memoria.getColaListos().estaVacia()) {
             Proceso p = algoritmo.seleccionarProceso(memoria.getColaListos());
             if (p != null) cpu1.asignarProceso(p);
         }
-        if (cpu2.getProcesoActual() == null && !memoria.getColaListos().estaVacia()) {
+        if (cpu2.getProcesoActual() == null && !cpu2.isEnInterrupcion()
+                && !memoria.getColaListos().estaVacia()) {
             Proceso p = algoritmo.seleccionarProceso(memoria.getColaListos());
             if (p != null) cpu2.asignarProceso(p);
         }
