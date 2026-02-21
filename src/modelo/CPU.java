@@ -16,6 +16,7 @@ public class CPU extends Thread {
     private volatile Proceso procesoActual;
     private volatile boolean enEjecucion;
     private volatile boolean pausado;
+    private volatile boolean enInterrupcion;
     private int ciclosEnQuantum;
 
     public CPU(int id, Memoria memoria, Reloj reloj) {
@@ -24,6 +25,7 @@ public class CPU extends Thread {
         this.reloj = reloj;
         this.enEjecucion = false;
         this.pausado = true;
+        this.enInterrupcion = false;
         this.ciclosEnQuantum = 0;
     }
 
@@ -46,7 +48,7 @@ public class CPU extends Thread {
     }
 
     private synchronized void ejecutarCiclo() {
-        if (procesoActual == null) {
+        if (procesoActual == null || enInterrupcion) {
             return;
         }
 
@@ -73,10 +75,8 @@ public class CPU extends Thread {
         }
     }
 
-    /**
-     * Asigna un proceso a esta CPU. El proceso ya estaba en RAM
-     * (vino de colaListos), así que no se modifica el contador.
-     */
+    // ======================== Asignación y Preemption ========================
+
     public synchronized void asignarProceso(Proceso p) {
         p.setEstado(EstadoProceso.EJECUCION);
         this.procesoActual = p;
@@ -84,10 +84,6 @@ public class CPU extends Thread {
         System.out.println("[CPU-" + id + "] Ejecutando: " + p.getId());
     }
 
-    /**
-     * Preempta el proceso actual y lo regresa a la cola de listos.
-     * Usa reEncolarListo porque el proceso ya estaba en RAM.
-     */
     public synchronized void preemptar() {
         if (procesoActual != null) {
             procesoActual.setEstado(EstadoProceso.LISTO);
@@ -97,6 +93,32 @@ public class CPU extends Thread {
             ciclosEnQuantum = 0;
         }
     }
+
+    // ======================== Interrupciones ========================
+
+    public synchronized Proceso interrumpir() {
+        enInterrupcion = true;
+        Proceso suspendido = procesoActual;
+        if (suspendido != null) {
+            suspendido.setEstado(EstadoProceso.LISTO);
+            procesoActual = null;
+            ciclosEnQuantum = 0;
+        }
+        return suspendido;
+    }
+
+    public synchronized void restaurarProceso(Proceso p) {
+        p.setEstado(EstadoProceso.EJECUCION);
+        this.procesoActual = p;
+        this.ciclosEnQuantum = 0;
+        this.enInterrupcion = false;
+    }
+
+    public synchronized void finalizarInterrupcion() {
+        this.enInterrupcion = false;
+    }
+
+    public boolean isEnInterrupcion() { return enInterrupcion; }
 
     // ======================== Control ========================
 
