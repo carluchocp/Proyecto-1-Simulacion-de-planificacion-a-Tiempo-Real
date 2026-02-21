@@ -20,8 +20,10 @@ import modelo.InterrupcionListener;
 import modelo.TipoInterrupcion;
 import modelo.Interrupcion;
 import modelo.Metricas;
+import modelo.CargadorArchivos;
 import planificadores.PoliticaPlanificacion;
 import estructuras.Nodo;
+import javax.swing.filechooser.FileNameExtensionFilter;
 
 public class Dashboard extends JFrame implements InterrupcionListener {
 
@@ -417,6 +419,36 @@ public class Dashboard extends JFrame implements InterrupcionListener {
             agregarLog("⚡ INTERRUPCION MANUAL: " + tipo.getDescripcion() + " en CPU-" + cpuObj.getCpuId());
         });
         panelAcciones.add(btnInterrupcion);
+
+        JButton btnCargarArchivo = new JButton("📂 Cargar Archivo (JSON/CSV)");
+        btnCargarArchivo.setFont(new Font("Consolas", Font.BOLD, 12));
+        btnCargarArchivo.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setDialogTitle("Cargar procesos desde archivo");
+            fileChooser.setFileFilter(new FileNameExtensionFilter(
+                    "Archivos de procesos (*.json, *.csv)", "json", "csv"));
+            fileChooser.setAcceptAllFileFilterUsed(false);
+
+            int resultado = fileChooser.showOpenDialog(this);
+            if (resultado == JFileChooser.APPROVE_OPTION) {
+                java.io.File archivo = fileChooser.getSelectedFile();
+                int cargados = CargadorArchivos.cargarDesdeArchivo(archivo, memoria);
+                if (cargados < 0) {
+                    agregarLog("ERROR: No se pudo leer el archivo " + archivo.getName());
+                    JOptionPane.showMessageDialog(this,
+                            "No se pudo leer el archivo.\nVerifique el formato y la extensión (.json o .csv).",
+                            "Error de carga", JOptionPane.ERROR_MESSAGE);
+                } else if (cargados == 0) {
+                    agregarLog("Archivo cargado pero no contenía procesos válidos: " + archivo.getName());
+                    JOptionPane.showMessageDialog(this,
+                            "El archivo no contenía procesos válidos.\nVerifique el formato.",
+                            "Sin procesos", JOptionPane.WARNING_MESSAGE);
+                } else {
+                    agregarLog(cargados + " procesos cargados desde: " + archivo.getName());
+                }
+            }
+        });
+        panelAcciones.add(btnCargarArchivo);
 
         panelDerecho.add(panelAcciones);
 
