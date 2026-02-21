@@ -72,6 +72,7 @@ public class Dashboard extends JFrame implements InterrupcionListener {
     private JSpinner spnVelocidad;
     private JButton btnIniciar;
     private JButton btnPausar;
+    private JButton btnReiniciar;
     private boolean simulacionIniciada = false;
 
     // --- Timer UI ---
@@ -92,6 +93,12 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         this.planificador = planificador;
         this.generador = generador;
         this.generadorInterrupciones = generadorInterrupciones;
+
+        // Registrar callback de fin de simulación
+        this.planificador.setOnSimulacionCompletada(() -> {
+            SwingUtilities.invokeLater(() -> simulacionCompletada());
+        });
+
         configurarVentana();
         inicializarComponentes();
         iniciarActualizacionUI();
@@ -156,13 +163,25 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         btnPausar.setPreferredSize(new Dimension(120, 35));
         btnPausar.setEnabled(false);
 
+        btnReiniciar = new JButton("REINICIAR");
+        btnReiniciar.setFont(new Font("Consolas", Font.BOLD, 14));
+        btnReiniciar.setBackground(new Color(180, 0, 0));
+        btnReiniciar.setForeground(Color.WHITE);
+        btnReiniciar.setOpaque(true);
+        btnReiniciar.setBorderPainted(false);
+        btnReiniciar.setFocusPainted(false);
+        btnReiniciar.setPreferredSize(new Dimension(120, 35));
+        btnReiniciar.setEnabled(false);
+
         btnIniciar.addActionListener(e -> iniciarSimulacion());
         btnPausar.addActionListener(e -> togglePausa());
+        btnReiniciar.addActionListener(e -> reiniciarSimulacion());
 
         JPanel panelBotonesSup = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         panelBotonesSup.setOpaque(false);
         panelBotonesSup.add(btnIniciar);
         panelBotonesSup.add(btnPausar);
+        panelBotonesSup.add(btnReiniciar);
 
         panelSuperior.add(panelIzqSup, BorderLayout.WEST);
         panelSuperior.add(panelBotonesSup, BorderLayout.EAST);
@@ -345,6 +364,9 @@ public class Dashboard extends JFrame implements InterrupcionListener {
 
     private void iniciarSimulacion() {
         if (!simulacionIniciada) {
+            // Generar procesos iniciales al iniciar
+            generador.generarProcesosIniciales(memoria, 20);
+
             PoliticaPlanificacion pol = (PoliticaPlanificacion) cmbAlgoritmo.getSelectedItem();
             int quantum = (int) spnQuantum.getValue();
             planificador.cambiarAlgoritmo(pol, quantum);
@@ -353,7 +375,7 @@ public class Dashboard extends JFrame implements InterrupcionListener {
             btnIniciar.setEnabled(false);
             btnIniciar.setBackground(Color.GRAY);
             btnPausar.setEnabled(true);
-            agregarLog("Simulación iniciada con " + pol.getDescripcion());
+            agregarLog("Simulación iniciada con " + pol.getDescripcion() + " - 20 procesos generados");
         }
 
         reloj.reanudar();
@@ -375,6 +397,7 @@ public class Dashboard extends JFrame implements InterrupcionListener {
             generadorInterrupciones.reanudar();
             btnPausar.setText("PAUSAR");
             btnPausar.setBackground(new Color(200, 150, 0));
+            btnReiniciar.setEnabled(false);
             lblEstadoSistema.setText("  [Ejecutando]  ");
             lblEstadoSistema.setForeground(Color.GREEN);
             agregarLog("Simulación reanudada");
@@ -386,10 +409,45 @@ public class Dashboard extends JFrame implements InterrupcionListener {
             generadorInterrupciones.pausar();
             btnPausar.setText("REANUDAR");
             btnPausar.setBackground(new Color(0, 150, 0));
+            btnReiniciar.setEnabled(true);
             lblEstadoSistema.setText("  [Pausado]  ");
             lblEstadoSistema.setForeground(Color.ORANGE);
             agregarLog("Simulación pausada");
         }
+    }
+
+    private void reiniciarSimulacion() {
+        // Asegurar que todo esté pausado
+        reloj.pausar();
+        planificador.pausar();
+        cpu1.pausar();
+        cpu2.pausar();
+        generadorInterrupciones.pausar();
+
+        // Limpiar CPUs
+        cpu1.limpiar();
+        cpu2.limpiar();
+
+        // Limpiar memoria (todas las colas)
+        memoria.limpiar();
+
+        // Reiniciar reloj
+        reloj.reiniciar();
+
+        // Resetear estado UI
+        simulacionIniciada = false;
+        btnIniciar.setEnabled(true);
+        btnIniciar.setBackground(new Color(0, 150, 0));
+        btnPausar.setEnabled(false);
+        btnPausar.setText("PAUSAR");
+        btnPausar.setBackground(new Color(200, 150, 0));
+        btnReiniciar.setEnabled(false);
+
+        lblEstadoSistema.setText("  [Detenido]  ");
+        lblEstadoSistema.setForeground(Color.ORANGE);
+
+        txtLog.setText("");
+        agregarLog("Simulación reiniciada - Presione INICIAR para comenzar");
     }
 
     // ======================== Helpers UI ========================
@@ -468,13 +526,15 @@ public class Dashboard extends JFrame implements InterrupcionListener {
             "  Estado: %s | Prioridad: %d\n" +
             "  PC: %d / %d | MAR: %d\n" +
             "  Deadline: %d (rest: %d)\n" +
-            "  Tipo: %s | %s | Quantum: %d",
+            "  Tipo: %s | %s\n" +
+            "  E/S cada: %d ciclos | Dur E/S: %d | Quantum: %d",
             p.getNombre(), p.getId(),
             p.getEstado(), p.getPrioridad(),
             p.getPc(), p.getInstruccionesTotales(), p.getMar(),
             p.getDeadline(), p.getTiempoRestanteDeadline(),
             p.isCpuBound() ? "CPU-Bound" : "IO-Bound",
             p.isPeriodico() ? "Periódico(T=" + p.getPeriodo() + ")" : "Aperiódico",
+            p.getCiclosParaES(), p.getDuracionES(),
             cpu.getCiclosEnQuantum()
         );
     }
@@ -508,9 +568,9 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         Nodo<Proceso> actual = cola.getPrimerNodo();
         while (actual != null) {
             Proceso p = actual.getContenido();
-            sb.append(String.format("[%s] %s | E/S rest: %d | DL:%d\n",
+            sb.append(String.format("[%s] %s | E/S: %d/%d | DL:%d\n",
                     p.getId(), p.getNombre(),
-                    p.getCiclosESRestantes(),
+                    p.getCiclosESRestantes(), p.getDuracionES(),
                     p.getTiempoRestanteDeadline()));
             actual = actual.getSiguiente();
         }
@@ -540,8 +600,7 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         int fallidos = 0;
         Nodo<Proceso> actual = memoria.getColaTerminados().getPrimerNodo();
         while (actual != null) {
-            Proceso p = actual.getContenido();
-            if (p.getTiempoRestanteDeadline() >= 0) { cumplidos++; }
+            if (actual.getContenido().getTiempoRestanteDeadline() >= 0) { cumplidos++; }
             else { fallidos++; }
             actual = actual.getSiguiente();
         }
@@ -565,5 +624,41 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         lblTasaExito.setText(String.format("Tasa éxito: %.1f%%", tasa));
         lblTasaExito.setForeground(tasa >= 80 ? new Color(0, 150, 0) : Color.RED);
         lblInterrupciones.setText("Interrupciones: " + generadorInterrupciones.getContadorInterrupciones());
+    }
+
+    private void simulacionCompletada() {
+        // Detener todo
+        reloj.pausar();
+        planificador.pausar();
+        cpu1.pausar();
+        cpu2.pausar();
+        generadorInterrupciones.pausar();
+
+        // Actualizar UI
+        btnPausar.setEnabled(false);
+        btnPausar.setText("PAUSAR");
+        btnPausar.setBackground(new Color(200, 150, 0));
+        btnReiniciar.setEnabled(true);
+
+        lblEstadoSistema.setText("  [COMPLETADO]  ");
+        lblEstadoSistema.setForeground(new Color(0, 200, 255));
+
+        int total = memoria.getColaTerminados().getTamano();
+        int cumplidos = 0;
+        Nodo<Proceso> actual = memoria.getColaTerminados().getPrimerNodo();
+        while (actual != null) {
+            if (actual.getContenido().getTiempoRestanteDeadline() >= 0) cumplidos++;
+            actual = actual.getSiguiente();
+        }
+        double tasa = total > 0 ? (cumplidos * 100.0 / total) : 0;
+
+        agregarLog("═══════════════════════════════════════════");
+        agregarLog("  SIMULACION COMPLETADA");
+        agregarLog("  Total procesos: " + total);
+        agregarLog("  Deadline cumplidos: " + cumplidos);
+        agregarLog("  Deadline fallidos: " + (total - cumplidos));
+        agregarLog(String.format("  Tasa de éxito: %.1f%%", tasa));
+        agregarLog("  Ciclos totales: " + reloj.getCicloGlobal());
+        agregarLog("═══════════════════════════════════════════");
     }
 }

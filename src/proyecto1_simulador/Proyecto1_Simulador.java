@@ -19,7 +19,6 @@ public class Proyecto1_Simulador {
         Memoria memoria = new Memoria(10);
 
         GeneradorProcesos generador = new GeneradorProcesos();
-        generador.generarProcesosIniciales(memoria, 20);
 
         Reloj reloj = new Reloj();
 

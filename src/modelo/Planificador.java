@@ -27,6 +27,7 @@ public class Planificador extends Thread {
     private volatile boolean enEjecucion;
     private volatile boolean pausado;
     private AlgoritmoPlanificacion algoritmo;
+    private Runnable onSimulacionCompletada;
 
     public Planificador(Memoria memoria, Reloj reloj, CPU cpu1, CPU cpu2) {
         this.memoria = memoria;
@@ -36,6 +37,10 @@ public class Planificador extends Thread {
         this.enEjecucion = false;
         this.pausado = true;
         this.algoritmo = new FCFS();
+    }
+
+    public void setOnSimulacionCompletada(Runnable callback) {
+        this.onSimulacionCompletada = callback;
     }
 
     // ======================== Intercambio dinámico ========================
@@ -100,20 +105,23 @@ public class Planificador extends Thread {
         admitirNuevos();
         actualizarDeadlines();
         gestionarBloqueados();
+        gestionarBloqueadosSuspendidos();
+        memoria.intentarReactivar();       // reactivar después de gestionar bloqueados
         verificarPreemption(cpu1);
         verificarPreemption(cpu2);
         asignarProcesosACPUs();
-        memoria.intentarReactivar();
+        memoria.intentarReactivar();       // reactivar de nuevo después de posibles terminaciones
+        verificarSimulacionCompletada();
     }
 
     // ======================== Admisión de nuevos ========================
 
     /**
      * Mueve procesos de la cola de Nuevos a Listos (o Listo/Suspendido si RAM llena).
-     * Solo admite uno por ciclo para simular el overhead de admisión.
+     * Admite todos los que pueda por ciclo.
      */
     private void admitirNuevos() {
-        if (!memoria.getColaNuevos().estaVacia()) {
+        while (!memoria.getColaNuevos().estaVacia()) {
             Proceso p = memoria.getColaNuevos().desencolar();
             if (p != null) {
                 memoria.admitirProceso(p);
@@ -154,6 +162,10 @@ public class Planificador extends Thread {
 
     // ======================== Gestión de bloqueados ========================
 
+    /**
+     * 7.3: BLOQUEADO → LISTO cuando ciclosESRestantes llega a 0
+     * 7.4: Si la RAM está llena, BLOQUEADO → BLOQUEADO_SUSPENDIDO
+     */
     private void gestionarBloqueados() {
         Nodo<Proceso> actual = memoria.getColaBloqueados().getPrimerNodo();
         while (actual != null) {
@@ -166,15 +178,77 @@ public class Planificador extends Thread {
         Proceso p;
         while ((p = memoria.getColaBloqueados().desencolar()) != null) {
             if (p.getCiclosESRestantes() <= 0) {
+                // 7.3: E/S satisfecha → BLOQUEADO → LISTO
                 p.setEstado(EstadoProceso.LISTO);
                 memoria.getColaListos().encolar(p);
-                System.out.println("[PLANIFICADOR] " + p.getId() + " desbloqueado -> Listo");
+                System.out.println("[PLANIFICADOR] " + p.getId()
+                        + " E/S completada -> Listo");
             } else {
                 sigueEnBloqueado.encolar(p);
             }
         }
+        // Re-encolar los que siguen bloqueados
         while ((p = sigueEnBloqueado.desencolar()) != null) {
             memoria.getColaBloqueados().encolar(p);
+        }
+
+        // 7.4: Si RAM está saturada, suspender bloqueados menos urgentes
+        while (memoria.ramLlena() && !memoria.getColaBloqueados().estaVacia()) {
+            memoria.suspenderMenosUrgente();
+        }
+    }
+
+    // ======================== Gestión de bloqueados suspendidos ========================
+
+    /**
+     * Decrementa E/S de bloqueados suspendidos.
+     * Cuando terminan E/S: BLOQUEADO_SUSPENDIDO → LISTO_SUSPENDIDO
+     * (luego intentarReactivar los moverá a LISTO si hay espacio en RAM)
+     */
+    private void gestionarBloqueadosSuspendidos() {
+        Nodo<Proceso> actual = memoria.getColaBloqueadosSuspendidos().getPrimerNodo();
+        while (actual != null) {
+            actual.getContenido().setCiclosESRestantes(
+                actual.getContenido().getCiclosESRestantes() - 1);
+            actual = actual.getSiguiente();
+        }
+
+        Cola<Proceso> sigueEnBloqSusp = new Cola<>();
+        Proceso p;
+        while ((p = memoria.getColaBloqueadosSuspendidos().desencolar()) != null) {
+            if (p.getCiclosESRestantes() <= 0) {
+                p.setEstado(EstadoProceso.LISTO_SUSPENDIDO);
+                memoria.getColaListosSuspendidos().encolar(p);
+                System.out.println("[PLANIFICADOR] " + p.getId()
+                        + " E/S completada (suspendido) -> Listo/Suspendido");
+            } else {
+                sigueEnBloqSusp.encolar(p);
+            }
+        }
+        while ((p = sigueEnBloqSusp.desencolar()) != null) {
+            memoria.getColaBloqueadosSuspendidos().encolar(p);
+        }
+    }
+
+    // ======================== Detección de fin ========================
+
+    private void verificarSimulacionCompletada() {
+        boolean nuevosVacia = memoria.getColaNuevos().estaVacia();
+        boolean listosVacia = memoria.getColaListos().estaVacia();
+        boolean bloqueadosVacia = memoria.getColaBloqueados().estaVacia();
+        boolean listosSuspVacia = memoria.getColaListosSuspendidos().estaVacia();
+        boolean bloqSuspVacia = memoria.getColaBloqueadosSuspendidos().estaVacia();
+        boolean cpu1Libre = cpu1.getProcesoActual() == null && !cpu1.isEnInterrupcion();
+        boolean cpu2Libre = cpu2.getProcesoActual() == null && !cpu2.isEnInterrupcion();
+        boolean hayTerminados = memoria.getColaTerminados().getTamano() > 0;
+
+        if (nuevosVacia && listosVacia && bloqueadosVacia
+                && listosSuspVacia && bloqSuspVacia
+                && cpu1Libre && cpu2Libre && hayTerminados) {
+            System.out.println("[PLANIFICADOR] *** SIMULACION COMPLETADA ***");
+            if (onSimulacionCompletada != null) {
+                onSimulacionCompletada.run();
+            }
         }
     }
 

@@ -58,7 +58,7 @@ public class CPU extends Thread {
 
         if (procesoActual.haTerminado()) {
             procesoActual.setEstado(EstadoProceso.TERMINADO);
-            memoria.encolarTerminado(procesoActual);
+            memoria.encolarTerminado(procesoActual);  // esto ahora decrementa procesosEnRAM
             System.out.println("[CPU-" + id + "] " + procesoActual.getId() + " TERMINADO");
             procesoActual = null;
             ciclosEnQuantum = 0;
@@ -67,9 +67,10 @@ public class CPU extends Thread {
 
         if (procesoActual.necesitaES()) {
             procesoActual.setEstado(EstadoProceso.BLOQUEADO);
-            procesoActual.setCiclosESRestantes(procesoActual.getCiclosParaES());
-            memoria.encolarBloqueadoDirecto(procesoActual);
-            System.out.println("[CPU-" + id + "] " + procesoActual.getId() + " -> BLOQUEADO (E/S)");
+            procesoActual.setCiclosESRestantes(procesoActual.getDuracionES());
+            memoria.encolarBloqueadoDirecto(procesoActual);  // sigue en RAM, no cambia contador
+            System.out.println("[CPU-" + id + "] " + procesoActual.getId()
+                    + " -> BLOQUEADO (E/S, " + procesoActual.getDuracionES() + " ciclos)");
             procesoActual = null;
             ciclosEnQuantum = 0;
         }
@@ -131,4 +132,11 @@ public class CPU extends Thread {
     public int getCiclosEnQuantum() { return ciclosEnQuantum; }
 
     public void detener() { this.enEjecucion = false; }
+
+    public synchronized void limpiar() {
+        this.procesoActual = null;
+        this.ciclosEnQuantum = 0;
+        this.enInterrupcion = false;
+        this.pausado = true;
+    }
 }
