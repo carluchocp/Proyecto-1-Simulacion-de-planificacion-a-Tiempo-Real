@@ -141,10 +141,29 @@ public class Memoria {
 
     // ======================== Cola de Bloqueados ========================
 
+    /**
+     * Encola un proceso ya marcado como BLOQUEADO (sin cambiar estado).
+     * Usar cuando CPU ya hizo setEstado(BLOQUEADO).
+     */
+    public void encolarBloqueadoDirecto(Proceso p) {
+        try {
+            semaforo.acquire();
+            colaBloqueados.encolar(p);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            semaforo.release();
+        }
+    }
+
+    /**
+     * Encola y cambia estado a BLOQUEADO.
+     * Usar cuando el estado aún no fue cambiado.
+     */
     public void encolarBloqueado(Proceso p) {
         try {
             semaforo.acquire();
-            // Ya está en RAM, no incrementar contador
+            p.setEstado(EstadoProceso.BLOQUEADO);
             colaBloqueados.encolar(p);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

@@ -6,21 +6,23 @@ package modelo;
 
 /**
  *
- * @author diego
+ * @author carluchocp
  */
 public class CPU extends Thread {
-    
+
     private int id;
     private Memoria memoria;
     private Reloj reloj;
-    private Proceso procesoActual;
-    private boolean enEjecucion;
+    private volatile Proceso procesoActual;
+    private volatile boolean enEjecucion;
+    private int ciclosEnQuantum;
 
     public CPU(int id, Memoria memoria, Reloj reloj) {
         this.id = id;
         this.memoria = memoria;
         this.reloj = reloj;
         this.enEjecucion = false;
+        this.ciclosEnQuantum = 0;
     }
 
     @Override
@@ -41,36 +43,68 @@ public class CPU extends Thread {
         }
     }
 
-    private void ejecutarCiclo() {
+    private synchronized void ejecutarCiclo() {
         if (procesoActual == null) {
-            procesoActual = memoria.desencolarListo();
-            if (procesoActual != null) {
-                procesoActual.setEstado(EstadoProceso.EJECUCION);
-                memoria.incrementarProcesosEnRAM();
-            }
+            return; // El Planificador se encarga de asignar
         }
 
-        if (procesoActual != null) {
-            procesoActual.avanzarCiclo();
+        // Ejecutar una instrucción
+        procesoActual.avanzarCiclo();
+        procesoActual.setMar(procesoActual.getPc());
+        ciclosEnQuantum++;
 
-            if (procesoActual.haTerminado()) {
-                procesoActual.setEstado(EstadoProceso.TERMINADO);
-                memoria.encolarTerminado(procesoActual);
-                procesoActual = null;
-            } else if (procesoActual.necesitaES()) {
-                procesoActual.setEstado(EstadoProceso.BLOQUEADO);
-                memoria.encolarBloqueado(procesoActual);
-                procesoActual = null;
-            }
+        // ¿Terminó?
+        if (procesoActual.haTerminado()) {
+            procesoActual.setEstado(EstadoProceso.TERMINADO);
+            memoria.encolarTerminado(procesoActual);
+            System.out.println("[CPU-" + id + "] " + procesoActual.getId() + " TERMINADO");
+            procesoActual = null;
+            ciclosEnQuantum = 0;
+            return;
+        }
+
+        // ¿Necesita E/S?
+        if (procesoActual.necesitaES()) {
+            procesoActual.setEstado(EstadoProceso.BLOQUEADO);
+            procesoActual.setCiclosESRestantes(procesoActual.getCiclosParaES());
+            memoria.encolarBloqueadoDirecto(procesoActual);
+            System.out.println("[CPU-" + id + "] " + procesoActual.getId() + " -> BLOQUEADO (E/S)");
+            procesoActual = null;
+            ciclosEnQuantum = 0;
         }
     }
 
-    public Proceso getProcesoActual() {
+    // ======================== Asignación y Preemption ========================
+
+    public synchronized void asignarProceso(Proceso p) {
+        p.setEstado(EstadoProceso.EJECUCION);
+        this.procesoActual = p;
+        this.ciclosEnQuantum = 0;
+        System.out.println("[CPU-" + id + "] Ejecutando: " + p.getId());
+    }
+
+    public synchronized void preemptar() {
+        if (procesoActual != null) {
+            procesoActual.setEstado(EstadoProceso.LISTO);
+            memoria.getColaListos().encolar(procesoActual);
+            System.out.println("[CPU-" + id + "] Preemptado: " + procesoActual.getId());
+            procesoActual = null;
+            ciclosEnQuantum = 0;
+        }
+    }
+
+    // ======================== Getters ========================
+
+    public synchronized Proceso getProcesoActual() {
         return procesoActual;
     }
 
     public int getCpuId() {
         return id;
+    }
+
+    public int getCiclosEnQuantum() {
+        return ciclosEnQuantum;
     }
 
     public void detener() {
