@@ -25,10 +25,17 @@ public class Proyecto1_Simulador {
         CPU cpu1 = new CPU(1, memoria, reloj);
         CPU cpu2 = new CPU(2, memoria, reloj);
 
+        // 5.4 — Inyectar semáforos del reloj a cada CPU
+        cpu1.setSemReloj(reloj.getSemCpu1());
+        cpu2.setSemReloj(reloj.getSemCpu2());
+
         Planificador planificador = new Planificador(memoria, reloj, cpu1, cpu2);
 
+        cpu1.setPlanificador(planificador);
+        cpu2.setPlanificador(planificador);
+
         GeneradorInterrupciones generadorInterrupciones =
-                new GeneradorInterrupciones(cpu1, cpu2, reloj, planificador);
+                new GeneradorInterrupciones(cpu1, cpu2, reloj, planificador, memoria);
 
         Dashboard dashboard = new Dashboard(reloj, memoria, cpu1, cpu2,
                 planificador, generador, generadorInterrupciones);
@@ -36,6 +43,7 @@ public class Proyecto1_Simulador {
 
         generadorInterrupciones.setListener(dashboard);
 
+        // Iniciar todos los hilos del sistema
         reloj.start();
         planificador.start();
         cpu1.start();

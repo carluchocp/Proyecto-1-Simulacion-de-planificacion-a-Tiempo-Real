@@ -19,13 +19,12 @@ import modelo.GeneradorInterrupciones;
 import modelo.InterrupcionListener;
 import modelo.TipoInterrupcion;
 import modelo.Interrupcion;
+import modelo.Metricas;
+import modelo.CargadorArchivos;
 import planificadores.PoliticaPlanificacion;
 import estructuras.Nodo;
+import javax.swing.filechooser.FileNameExtensionFilter;
 
-/**
- *
- * @author carluchocp
- */
 public class Dashboard extends JFrame implements InterrupcionListener {
 
     // --- Referencias del sistema ---
@@ -65,6 +64,13 @@ public class Dashboard extends JFrame implements InterrupcionListener {
     private JLabel lblDeadlineFallidos;
     private JLabel lblTasaExito;
     private JLabel lblInterrupciones;
+    private JLabel lblThroughput;
+    private JLabel lblTiempoEsperaPromedio;
+    private JLabel lblUtilizacionCPU;
+
+    // --- Gráfico 9.1 (custom) ---
+    private GraficoUtilizacionPanel panelGrafico;
+    private int ultimoIndiceGrafico = 0;
 
     // --- Controles ---
     private JComboBox<PoliticaPlanificacion> cmbAlgoritmo;
@@ -78,10 +84,114 @@ public class Dashboard extends JFrame implements InterrupcionListener {
     // --- Timer UI ---
     private Timer timerUI;
 
-    // --- Contadores de métricas ---
+    // --- Contadores de métricas (legacy, now delegated to Metricas) ---
     private int totalTerminados = 0;
     private int deadlineCumplidos = 0;
     private int deadlineFallidos = 0;
+
+    // --- Tracking de deadlines ya reportados en log ---
+    private int ultimoDeadlineFallidoReportado = 0;
+
+    // ======================== Panel de gráfico custom ========================
+
+    /**
+     * Panel que dibuja el gráfico de utilización CPU vs tiempo usando Graphics2D.
+     */
+    private static class GraficoUtilizacionPanel extends JPanel {
+        private double[] datos;
+        private int[] ciclos;
+        private int cantidad;
+        private int capacidad;
+
+        public GraficoUtilizacionPanel() {
+            this.capacidad = 500;
+            this.datos = new double[capacidad];
+            this.ciclos = new int[capacidad];
+            this.cantidad = 0;
+            setBackground(new Color(20, 20, 20));
+        }
+
+        public synchronized void agregarPunto(int ciclo, double utilizacion) {
+            if (cantidad >= capacidad) {
+                // Desplazar: quitar el más viejo
+                System.arraycopy(datos, 1, datos, 0, capacidad - 1);
+                System.arraycopy(ciclos, 1, ciclos, 0, capacidad - 1);
+                cantidad = capacidad - 1;
+            }
+            datos[cantidad] = utilizacion;
+            ciclos[cantidad] = ciclo;
+            cantidad++;
+        }
+
+        public synchronized void limpiar() {
+            cantidad = 0;
+        }
+
+        @Override
+        protected synchronized void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g;
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth();
+            int h = getHeight();
+            int margenIzq = 45;
+            int margenDer = 10;
+            int margenSup = 20;
+            int margenInf = 25;
+            int areaW = w - margenIzq - margenDer;
+            int areaH = h - margenSup - margenInf;
+
+            if (areaW <= 0 || areaH <= 0) return;
+
+            // Título
+            g2.setColor(Color.WHITE);
+            g2.setFont(new Font("Consolas", Font.BOLD, 11));
+            g2.drawString("Utilización CPU vs Tiempo", margenIzq + 10, 14);
+
+            // Ejes
+            g2.setColor(Color.DARK_GRAY);
+            g2.drawLine(margenIzq, margenSup, margenIzq, margenSup + areaH);
+            g2.drawLine(margenIzq, margenSup + areaH, margenIzq + areaW, margenSup + areaH);
+
+            // Etiquetas eje Y
+            g2.setFont(new Font("Consolas", Font.PLAIN, 9));
+            g2.setColor(Color.LIGHT_GRAY);
+            for (int pct = 0; pct <= 100; pct += 25) {
+                int y = margenSup + areaH - (int)(areaH * pct / 100.0);
+                g2.setColor(new Color(50, 50, 50));
+                g2.drawLine(margenIzq, y, margenIzq + areaW, y);
+                g2.setColor(Color.LIGHT_GRAY);
+                g2.drawString(pct + "%", 5, y + 4);
+            }
+
+            // Etiqueta eje X
+            g2.setColor(Color.LIGHT_GRAY);
+            g2.drawString("Ciclo", margenIzq + areaW / 2 - 15, h - 3);
+
+            if (cantidad < 2) return;
+
+            // Dibujar línea de datos
+            g2.setColor(new Color(0, 200, 100));
+            g2.setStroke(new BasicStroke(2.0f));
+
+            for (int i = 1; i < cantidad; i++) {
+                int x1 = margenIzq + (int)((i - 1) * (double) areaW / (cantidad - 1));
+                int x2 = margenIzq + (int)(i * (double) areaW / (cantidad - 1));
+                int y1 = margenSup + areaH - (int)(areaH * datos[i - 1] / 100.0);
+                int y2 = margenSup + areaH - (int)(areaH * datos[i] / 100.0);
+                g2.drawLine(x1, y1, x2, y2);
+            }
+
+            // Etiquetas de ciclo en eje X (inicio y fin)
+            g2.setColor(Color.LIGHT_GRAY);
+            g2.setFont(new Font("Consolas", Font.PLAIN, 9));
+            g2.drawString(String.valueOf(ciclos[0]), margenIzq, margenSup + areaH + 15);
+            String finStr = String.valueOf(ciclos[cantidad - 1]);
+            int finW = g2.getFontMetrics().stringWidth(finStr);
+            g2.drawString(finStr, margenIzq + areaW - finW, margenSup + areaH + 15);
+        }
+    }
 
     public Dashboard(Reloj reloj, Memoria memoria, CPU cpu1, CPU cpu2,
                      Planificador planificador, GeneradorProcesos generador,
@@ -94,7 +204,6 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         this.generador = generador;
         this.generadorInterrupciones = generadorInterrupciones;
 
-        // Registrar callback de fin de simulación
         this.planificador.setOnSimulacionCompletada(() -> {
             SwingUtilities.invokeLater(() -> simulacionCompletada());
         });
@@ -111,7 +220,7 @@ public class Dashboard extends JFrame implements InterrupcionListener {
 
     private void configurarVentana() {
         setTitle("UNIMET-Sat RTOS Simulator");
-        setSize(1400, 900);
+        setSize(1600, 950);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(5, 5));
@@ -143,7 +252,6 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         panelIzqSup.add(lblEstadoSistema);
         panelIzqSup.add(lblAlgoritmoActual);
 
-        // Botones de control en la barra superior
         btnIniciar = new JButton("INICIAR");
         btnIniciar.setFont(new Font("Consolas", Font.BOLD, 14));
         btnIniciar.setBackground(new Color(0, 150, 0));
@@ -191,7 +299,6 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         JPanel panelCentral = new JPanel(new BorderLayout(5, 5));
         panelCentral.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        // --- CPUs (arriba) ---
         JPanel panelCPUs = new JPanel(new GridLayout(1, 2, 8, 0));
         txtCpu1 = crearTextArea(14, true);
         txtCpu2 = crearTextArea(14, true);
@@ -199,7 +306,6 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         panelCPUs.add(crearScrollConTitulo(txtCpu2, "CPU 2"));
         panelCPUs.setPreferredSize(new Dimension(0, 160));
 
-        // --- Colas (centro) ---
         JPanel panelColas = new JPanel(new GridLayout(2, 3, 6, 6));
 
         txtNuevos = crearTextArea(12, false);
@@ -220,10 +326,10 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         panelCentral.add(panelColas, BorderLayout.CENTER);
         add(panelCentral, BorderLayout.CENTER);
 
-        // ===================== PANEL DERECHO (Controles + Métricas) =====================
+        // ===================== PANEL DERECHO =====================
         JPanel panelDerecho = new JPanel();
         panelDerecho.setLayout(new BoxLayout(panelDerecho, BoxLayout.Y_AXIS));
-        panelDerecho.setPreferredSize(new Dimension(280, 0));
+        panelDerecho.setPreferredSize(new Dimension(340, 0));
         panelDerecho.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
         // --- Controles de algoritmo ---
@@ -281,7 +387,6 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         JButton btnGenerar1 = new JButton("Tarea de Emergencia");
         btnGenerar1.addActionListener(e -> {
             Proceso p = generador.crearProcesoAleatorio();
-            // Emergencia: salta la cola de Nuevos, va directo a RAM
             memoria.admitirProceso(p);
             agregarLog("EMERGENCIA: " + p.getId() + " admitido directo -> " + p.getEstado());
         });
@@ -308,12 +413,42 @@ public class Dashboard extends JFrame implements InterrupcionListener {
             }
 
             Interrupcion inter = new Interrupcion(
-                    (int)(System.currentTimeMillis() % 10000), tipo, cpuObj, reloj, planificador);
+                    (int)(System.currentTimeMillis() % 10000), tipo, cpuObj, reloj, planificador, memoria);
             inter.setListener(this);
             inter.start();
             agregarLog("⚡ INTERRUPCION MANUAL: " + tipo.getDescripcion() + " en CPU-" + cpuObj.getCpuId());
         });
         panelAcciones.add(btnInterrupcion);
+
+        JButton btnCargarArchivo = new JButton("📂 Cargar Archivo (JSON/CSV)");
+        btnCargarArchivo.setFont(new Font("Consolas", Font.BOLD, 12));
+        btnCargarArchivo.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setDialogTitle("Cargar procesos desde archivo");
+            fileChooser.setFileFilter(new FileNameExtensionFilter(
+                    "Archivos de procesos (*.json, *.csv)", "json", "csv"));
+            fileChooser.setAcceptAllFileFilterUsed(false);
+
+            int resultado = fileChooser.showOpenDialog(this);
+            if (resultado == JFileChooser.APPROVE_OPTION) {
+                java.io.File archivo = fileChooser.getSelectedFile();
+                int cargados = CargadorArchivos.cargarDesdeArchivo(archivo, memoria);
+                if (cargados < 0) {
+                    agregarLog("ERROR: No se pudo leer el archivo " + archivo.getName());
+                    JOptionPane.showMessageDialog(this,
+                            "No se pudo leer el archivo.\nVerifique el formato y la extensión (.json o .csv).",
+                            "Error de carga", JOptionPane.ERROR_MESSAGE);
+                } else if (cargados == 0) {
+                    agregarLog("Archivo cargado pero no contenía procesos válidos: " + archivo.getName());
+                    JOptionPane.showMessageDialog(this,
+                            "El archivo no contenía procesos válidos.\nVerifique el formato.",
+                            "Sin procesos", JOptionPane.WARNING_MESSAGE);
+                } else {
+                    agregarLog(cargados + " procesos cargados desde: " + archivo.getName());
+                }
+            }
+        });
+        panelAcciones.add(btnCargarArchivo);
 
         panelDerecho.add(panelAcciones);
 
@@ -328,6 +463,9 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         lblDeadlineFallidos = new JLabel("Deadline FAIL: 0");
         lblTasaExito = new JLabel("Tasa éxito: 0%");
         lblInterrupciones = new JLabel("Interrupciones: 0");
+        lblThroughput = new JLabel("Throughput: 0.000 p/ciclo");
+        lblTiempoEsperaPromedio = new JLabel("Espera prom: 0.0 ciclos");
+        lblUtilizacionCPU = new JLabel("Utilización CPU: 0.0%");
 
         Font fontMetrica = new Font("Consolas", Font.PLAIN, 12);
         lblProcesosEnRAM.setFont(fontMetrica);
@@ -337,6 +475,13 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         lblDeadlineFallidos.setFont(fontMetrica);
         lblTasaExito.setFont(fontMetrica);
         lblTasaExito.setForeground(new Color(0, 150, 0));
+        lblInterrupciones.setFont(fontMetrica);
+        lblThroughput.setFont(fontMetrica);
+        lblThroughput.setForeground(new Color(100, 149, 237));
+        lblTiempoEsperaPromedio.setFont(fontMetrica);
+        lblTiempoEsperaPromedio.setForeground(new Color(255, 165, 0));
+        lblUtilizacionCPU.setFont(fontMetrica);
+        lblUtilizacionCPU.setForeground(new Color(0, 200, 200));
 
         panelMetricas.add(lblProcesosEnRAM);
         panelMetricas.add(lblTotalProcesos);
@@ -345,7 +490,21 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         panelMetricas.add(lblDeadlineFallidos);
         panelMetricas.add(lblTasaExito);
         panelMetricas.add(lblInterrupciones);
+        panelMetricas.add(lblThroughput);
+        panelMetricas.add(lblTiempoEsperaPromedio);
+        panelMetricas.add(lblUtilizacionCPU);
         panelDerecho.add(panelMetricas);
+
+        // --- 9.1 Gráfico de Utilización CPU (custom Graphics2D) ---
+        panelGrafico = new GraficoUtilizacionPanel();
+        panelGrafico.setPreferredSize(new Dimension(320, 180));
+        panelGrafico.setMinimumSize(new Dimension(320, 150));
+        panelGrafico.setMaximumSize(new Dimension(400, 220));
+        panelGrafico.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(Color.GRAY), "Gráfico CPU",
+                TitledBorder.LEFT, TitledBorder.TOP,
+                new Font("Consolas", Font.BOLD, 12)));
+        panelDerecho.add(panelGrafico);
 
         add(panelDerecho, BorderLayout.EAST);
 
@@ -364,7 +523,6 @@ public class Dashboard extends JFrame implements InterrupcionListener {
 
     private void iniciarSimulacion() {
         if (!simulacionIniciada) {
-            // Generar procesos iniciales al iniciar
             generador.generarProcesosIniciales(memoria, 20);
 
             PoliticaPlanificacion pol = (PoliticaPlanificacion) cmbAlgoritmo.getSelectedItem();
@@ -417,24 +575,23 @@ public class Dashboard extends JFrame implements InterrupcionListener {
     }
 
     private void reiniciarSimulacion() {
-        // Asegurar que todo esté pausado
         reloj.pausar();
         planificador.pausar();
         cpu1.pausar();
         cpu2.pausar();
         generadorInterrupciones.pausar();
 
-        // Limpiar CPUs
         cpu1.limpiar();
         cpu2.limpiar();
-
-        // Limpiar memoria (todas las colas)
         memoria.limpiar();
-
-        // Reiniciar reloj
         reloj.reiniciar();
 
-        // Resetear estado UI
+        // Reiniciar métricas
+        planificador.getMetricas().reiniciar();
+        panelGrafico.limpiar();
+        ultimoIndiceGrafico = 0;
+        ultimoDeadlineFallidoReportado = 0;
+
         simulacionIniciada = false;
         btnIniciar.setEnabled(true);
         btnIniciar.setBackground(new Color(0, 150, 0));
@@ -487,6 +644,8 @@ public class Dashboard extends JFrame implements InterrupcionListener {
             actualizarCPUs();
             actualizarColas();
             actualizarMetricas();
+            actualizarGrafico();
+            detectarFallosDeadlineEnLog();
         });
         timerUI.start();
     }
@@ -583,8 +742,9 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         Nodo<Proceso> actual = cola.getPrimerNodo();
         while (actual != null) {
             Proceso p = actual.getContenido();
-            sb.append(String.format("[%s] %s | Instr: %d\n",
-                    p.getId(), p.getNombre(), p.getInstruccionesTotales()));
+            String dlStatus = p.getTiempoRestanteDeadline() >= 0 ? "✓" : "✗";
+            sb.append(String.format("[%s] %s | Instr: %d | DL: %s\n",
+                    p.getId(), p.getNombre(), p.getInstruccionesTotales(), dlStatus));
             actual = actual.getSiguiente();
         }
         if (sb.length() == 0) sb.append("(vacía)");
@@ -592,18 +752,13 @@ public class Dashboard extends JFrame implements InterrupcionListener {
     }
 
     private void actualizarMetricas() {
+        Metricas metricas = planificador.getMetricas();
         int enRAM = memoria.getProcesosEnRAM();
         int capMax = memoria.getCapacidadMaxima();
         int terminados = memoria.getColaTerminados().getTamano();
 
-        int cumplidos = 0;
-        int fallidos = 0;
-        Nodo<Proceso> actual = memoria.getColaTerminados().getPrimerNodo();
-        while (actual != null) {
-            if (actual.getContenido().getTiempoRestanteDeadline() >= 0) { cumplidos++; }
-            else { fallidos++; }
-            actual = actual.getSiguiente();
-        }
+        int cumplidos = metricas.getDeadlineCumplidos();
+        int fallidos = metricas.getDeadlineFallidos();
 
         int totalEnSistema = memoria.getColaNuevos().getTamano()
                 + memoria.getColaListos().getTamano()
@@ -614,7 +769,11 @@ public class Dashboard extends JFrame implements InterrupcionListener {
                 + (cpu1.getProcesoActual() != null ? 1 : 0)
                 + (cpu2.getProcesoActual() != null ? 1 : 0);
 
-        double tasa = terminados > 0 ? (cumplidos * 100.0 / terminados) : 0;
+        double tasa = metricas.getTasaExito();
+        int cicloActual = reloj.getCicloGlobal();
+        double throughput = metricas.getThroughput(cicloActual);
+        double esperaPromedio = metricas.getTiempoEsperaPromedio(memoria.getColaTerminados());
+        double utilizacionProm = metricas.getUtilizacionPromedio();
 
         lblProcesosEnRAM.setText("En RAM: " + enRAM + " / " + capMax);
         lblTotalProcesos.setText("Total procesos: " + totalEnSistema);
@@ -624,17 +783,48 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         lblTasaExito.setText(String.format("Tasa éxito: %.1f%%", tasa));
         lblTasaExito.setForeground(tasa >= 80 ? new Color(0, 150, 0) : Color.RED);
         lblInterrupciones.setText("Interrupciones: " + generadorInterrupciones.getContadorInterrupciones());
+        lblThroughput.setText(String.format("Throughput: %.4f p/ciclo", throughput));
+        lblTiempoEsperaPromedio.setText(String.format("Espera prom: %.1f ciclos", esperaPromedio));
+        lblUtilizacionCPU.setText(String.format("Utilización CPU: %.1f%%", utilizacionProm));
+    }
+
+    /**
+     * 9.1 — Actualizar el gráfico de utilización CPU con datos nuevos del historial.
+     */
+    private void actualizarGrafico() {
+        Metricas metricas = planificador.getMetricas();
+        int tamano = metricas.getTamanoHistorial();
+
+        for (int i = ultimoIndiceGrafico; i < tamano; i++) {
+            panelGrafico.agregarPunto(metricas.getCicloEn(i), metricas.getUtilizacionEn(i));
+        }
+        ultimoIndiceGrafico = tamano;
+
+        panelGrafico.repaint();
+    }
+
+    /**
+     * 9.5 — Detectar fallos de deadline y registrarlos en el log.
+     */
+    private void detectarFallosDeadlineEnLog() {
+        Metricas metricas = planificador.getMetricas();
+        int fallidosActual = metricas.getDeadlineFallidos();
+        if (fallidosActual > ultimoDeadlineFallidoReportado) {
+            int nuevos = fallidosActual - ultimoDeadlineFallidoReportado;
+            for (int i = 0; i < nuevos; i++) {
+                agregarLog("⚠ Fallo de Deadline detectado — proceso no cumplió su tiempo límite");
+            }
+            ultimoDeadlineFallidoReportado = fallidosActual;
+        }
     }
 
     private void simulacionCompletada() {
-        // Detener todo
         reloj.pausar();
         planificador.pausar();
         cpu1.pausar();
         cpu2.pausar();
         generadorInterrupciones.pausar();
 
-        // Actualizar UI
         btnPausar.setEnabled(false);
         btnPausar.setText("PAUSAR");
         btnPausar.setBackground(new Color(200, 150, 0));
@@ -643,14 +833,14 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         lblEstadoSistema.setText("  [COMPLETADO]  ");
         lblEstadoSistema.setForeground(new Color(0, 200, 255));
 
-        int total = memoria.getColaTerminados().getTamano();
-        int cumplidos = 0;
-        Nodo<Proceso> actual = memoria.getColaTerminados().getPrimerNodo();
-        while (actual != null) {
-            if (actual.getContenido().getTiempoRestanteDeadline() >= 0) cumplidos++;
-            actual = actual.getSiguiente();
-        }
-        double tasa = total > 0 ? (cumplidos * 100.0 / total) : 0;
+        Metricas metricas = planificador.getMetricas();
+        int total = metricas.getProcesosCompletados();
+        int cumplidos = metricas.getDeadlineCumplidos();
+        double tasa = metricas.getTasaExito();
+        int cicloActual = reloj.getCicloGlobal();
+        double throughput = metricas.getThroughput(cicloActual);
+        double esperaProm = metricas.getTiempoEsperaPromedio(memoria.getColaTerminados());
+        double utilizacion = metricas.getUtilizacionPromedio();
 
         agregarLog("═══════════════════════════════════════════");
         agregarLog("  SIMULACION COMPLETADA");
@@ -658,7 +848,10 @@ public class Dashboard extends JFrame implements InterrupcionListener {
         agregarLog("  Deadline cumplidos: " + cumplidos);
         agregarLog("  Deadline fallidos: " + (total - cumplidos));
         agregarLog(String.format("  Tasa de éxito: %.1f%%", tasa));
-        agregarLog("  Ciclos totales: " + reloj.getCicloGlobal());
+        agregarLog(String.format("  Throughput: %.4f procesos/ciclo", throughput));
+        agregarLog(String.format("  Tiempo espera promedio: %.1f ciclos", esperaProm));
+        agregarLog(String.format("  Utilización CPU promedio: %.1f%%", utilizacion));
+        agregarLog("  Ciclos totales: " + cicloActual);
         agregarLog("═══════════════════════════════════════════");
     }
 }

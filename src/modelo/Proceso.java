@@ -4,11 +4,12 @@
  */
 package modelo;
 
+import java.util.concurrent.Semaphore;
+
 /**
- *
  * @author diego
  */
-public class Proceso {
+public class Proceso implements Runnable {
 
     // --- Identificación ---
     private String id;
@@ -16,12 +17,12 @@ public class Proceso {
 
     // --- Estado y registros ---
     private EstadoProceso estado;
-    private int pc;                     // Program Counter
-    private int mar;                    // Memory Address Register
+    private int pc;
+    private int mar;
 
     // --- Planificación ---
     private int prioridad;
-    private int deadline;               // en ciclos
+    private int deadline;
     private int tiempoRestanteDeadline;
 
     // --- Instrucciones ---
@@ -29,16 +30,27 @@ public class Proceso {
     private int instruccionesEjecutadas;
 
     // --- Tipo y periodicidad ---
-    private boolean periodico;          // true = periódico, false = aperiódico
-    private int periodo;                // solo aplica si es periódico
+    private boolean periodico;
+    private int periodo;
 
     // --- E/S ---
-    private int ciclosParaES;           // 7.1: cada cuántos ciclos genera excepción de E/S
-    private int duracionES;             // 7.2: cuántos ciclos necesita para satisfacer la E/S
-    private int ciclosESRestantes;      // ciclos que faltan para terminar E/S actual
+    private int ciclosParaES;
+    private int duracionES;
+    private int ciclosESRestantes;
 
     // --- CPU vs E/S ---
-    private boolean cpuBound;           // true = CPU-bound, false = IO-bound
+    private boolean cpuBound;
+
+    // --- Métricas 9.3/9.4 ---
+    private int cicloLlegada;       // ciclo en que el proceso entró al sistema
+    private int cicloFinalizacion;  // ciclo en que el proceso terminó
+    private int tiempoEspera;       // ciclos acumulados en cola de listos
+
+    // ========== 5.2 — Concurrencia del proceso ==========
+    private final Semaphore semEjecutar = new Semaphore(0);  // CPU lo despierta
+    private final Semaphore semTerminoCiclo = new Semaphore(0); // Proceso avisa que terminó ciclo
+    private volatile boolean activo;  // controla el ciclo de vida del thread
+    private Thread hilo;
 
     // ======================== Constructor ========================
 
@@ -63,15 +75,75 @@ public class Proceso {
         this.mar = 0;
         this.instruccionesEjecutadas = 0;
         this.ciclosESRestantes = 0;
+        this.activo = true;
+        this.cicloLlegada = -1;
+        this.cicloFinalizacion = -1;
+        this.tiempoEspera = 0;
+
+        // 5.2 — Crear e iniciar el hilo del proceso
+        this.hilo = new Thread(this, "Proceso-" + id);
+        this.hilo.setDaemon(true);
+        this.hilo.start();
+    }
+
+    // ========== 5.2 — run(): el proceso espera a que la CPU lo despierte ==========
+
+    @Override
+    public void run() {
+        while (activo && !haTerminado()) {
+            try {
+                // Bloquearse hasta que la CPU libere un permit
+                semEjecutar.acquire();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+
+            if (!activo) break;
+
+            // Ejecutar UNA instrucción
+            this.pc++;
+            this.instruccionesEjecutadas++;
+            this.mar = this.pc;
+
+            // Avisar a la CPU que terminó este ciclo
+            semTerminoCiclo.release();
+        }
+    }
+
+    /**
+     * 5.2 — La CPU llama esto para ejecutar un ciclo del proceso.
+     * Despierta al hilo del proceso y espera a que termine la instrucción.
+     */
+    public void ejecutarUnCiclo() {
+        if (!activo || haTerminado()) return;
+        semEjecutar.release();       // despertar al hilo del proceso
+        try {
+            semTerminoCiclo.acquire(); // esperar a que termine la instrucción
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Detiene el hilo del proceso (al terminar o al limpiar).
+     */
+    public void detenerHilo() {
+        this.activo = false;
+        semEjecutar.release(); // desbloquear si está esperando
+        // Drenar por si hay permits pendientes
+        semTerminoCiclo.drainPermits();
+        if (hilo != null) {
+            hilo.interrupt();
+        }
     }
 
     // ======================== Transición validada ========================
 
     public void setEstado(EstadoProceso nuevoEstado) {
         if (this.estado == nuevoEstado) {
-            return; // ya está en ese estado, no hacer nada
+            return;
         }
-
         if (!this.estado.puedeTransicionarA(nuevoEstado)) {
             throw new IllegalStateException(
                 String.format("Transición inválida: %s -> %s (Proceso %s)",
@@ -129,8 +201,21 @@ public class Proceso {
     public boolean isCpuBound() { return cpuBound; }
     public void setCpuBound(boolean cpuBound) { this.cpuBound = cpuBound; }
 
+    public int getCicloLlegada() { return cicloLlegada; }
+    public void setCicloLlegada(int cicloLlegada) { this.cicloLlegada = cicloLlegada; }
+
+    public int getCicloFinalizacion() { return cicloFinalizacion; }
+    public void setCicloFinalizacion(int cicloFinalizacion) { this.cicloFinalizacion = cicloFinalizacion; }
+
+    public int getTiempoEspera() { return tiempoEspera; }
+    public void setTiempoEspera(int tiempoEspera) { this.tiempoEspera = tiempoEspera; }
+    public void incrementarTiempoEspera() { this.tiempoEspera++; }
+
     // ======================== Métodos utilitarios ========================
 
+    /**
+     * @deprecated Usar ejecutarUnCiclo() desde la CPU para sincronización con threads.
+     */
     public void avanzarCiclo() {
         this.pc++;
         this.instruccionesEjecutadas++;
@@ -140,10 +225,6 @@ public class Proceso {
         return instruccionesEjecutadas >= instruccionesTotales;
     }
 
-    /**
-     * 7.1: Determina si el proceso necesita generar una excepción de E/S.
-     * Ocurre cada ciclosParaES instrucciones ejecutadas.
-     */
     public boolean necesitaES() {
         return ciclosParaES > 0
                 && instruccionesEjecutadas > 0
