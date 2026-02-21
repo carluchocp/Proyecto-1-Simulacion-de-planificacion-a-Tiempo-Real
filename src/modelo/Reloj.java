@@ -46,4 +46,9 @@ public class Reloj extends Thread {
     public boolean isPausado() { return pausado; }
 
     public void detener() { this.enEjecucion = false; }
+
+    public void reiniciar() {
+        this.cicloGlobal = 0;
+        this.pausado = true;
+    }
 }
