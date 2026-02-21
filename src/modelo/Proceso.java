@@ -69,6 +69,7 @@ public class Proceso {
         if (this.estado == nuevoEstado) {
             return; // ya está en ese estado, no hacer nada
         }
+
         if (!this.estado.puedeTransicionarA(nuevoEstado)) {
             throw new IllegalStateException(
                 String.format("Transición inválida: %s -> %s (Proceso %s)",
