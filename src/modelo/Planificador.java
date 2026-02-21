@@ -32,6 +32,9 @@ public class Planificador extends Thread {
     private AlgoritmoPlanificacion algoritmo;
     private Runnable onSimulacionCompletada;
 
+    // 9.x — Métricas de rendimiento
+    private Metricas metricas;
+
     // 5.3 — Semáforo para exclusión mutua sobre el algoritmo
     private final Semaphore mutexAlgoritmo = new Semaphore(1, true);
 
@@ -45,11 +48,14 @@ public class Planificador extends Thread {
         this.algoritmo = new FCFS();
         this.setName("Planificador");
         this.setDaemon(true);
+        this.metricas = new Metricas();
     }
 
     public void setOnSimulacionCompletada(Runnable callback) {
         this.onSimulacionCompletada = callback;
     }
+
+    public Metricas getMetricas() { return metricas; }
 
     // ======================== Intercambio dinámico ========================
 
@@ -142,6 +148,7 @@ public class Planificador extends Thread {
         try {
             admitirNuevos();
             actualizarDeadlines();
+            incrementarTiemposEspera();        // 9.4
             gestionarBloqueados();
             gestionarBloqueadosSuspendidos();
             memoria.intentarReactivar();
@@ -149,6 +156,7 @@ public class Planificador extends Thread {
             verificarPreemption(cpu2);
             asignarProcesosACPUs();
             memoria.intentarReactivar();
+            registrarUtilizacionCPU();         // 9.1
             verificarSimulacionCompletada();
         } finally {
             mutexAlgoritmo.release();
@@ -161,6 +169,10 @@ public class Planificador extends Thread {
         while (!memoria.getColaNuevos().estaVacia()) {
             Proceso p = memoria.getColaNuevos().desencolar();
             if (p != null) {
+                // 9.4 — Registrar ciclo de llegada
+                if (p.getCicloLlegada() < 0) {
+                    p.setCicloLlegada(reloj.getCicloGlobal());
+                }
                 memoria.admitirProceso(p);
                 System.out.println("[PLANIFICADOR] Admitido: " + p.getId() + " -> " + p.getEstado());
             }
@@ -176,12 +188,19 @@ public class Planificador extends Thread {
         decrementarDeadlineCola(memoria.getColaBloqueadosSuspendidos());
 
         if (cpu1.getProcesoActual() != null) {
-            cpu1.getProcesoActual().setTiempoRestanteDeadline(
-                cpu1.getProcesoActual().getTiempoRestanteDeadline() - 1);
+            Proceso p1 = cpu1.getProcesoActual();
+            p1.setTiempoRestanteDeadline(p1.getTiempoRestanteDeadline() - 1);
+            // 9.5 — Detectar fallo de deadline en CPU
+            if (p1.deadlineExpirado() && p1.getTiempoRestanteDeadline() == 0) {
+                System.out.println("[DEADLINE] ⚠ Fallo de Deadline en Proceso " + p1.getId() + " (en CPU1)");
+            }
         }
         if (cpu2.getProcesoActual() != null) {
-            cpu2.getProcesoActual().setTiempoRestanteDeadline(
-                cpu2.getProcesoActual().getTiempoRestanteDeadline() - 1);
+            Proceso p2 = cpu2.getProcesoActual();
+            p2.setTiempoRestanteDeadline(p2.getTiempoRestanteDeadline() - 1);
+            if (p2.deadlineExpirado() && p2.getTiempoRestanteDeadline() == 0) {
+                System.out.println("[DEADLINE] ⚠ Fallo de Deadline en Proceso " + p2.getId() + " (en CPU2)");
+            }
         }
     }
 
@@ -190,11 +209,36 @@ public class Planificador extends Thread {
         while (actual != null) {
             Proceso p = actual.getContenido();
             p.setTiempoRestanteDeadline(p.getTiempoRestanteDeadline() - 1);
-            if (p.deadlineExpirado()) {
-                System.out.println("[DEADLINE] Fallo en Proceso " + p.getId());
+            // 9.5 — Detectar fallo de deadline en colas
+            if (p.getTiempoRestanteDeadline() == 0) {
+                System.out.println("[DEADLINE] ⚠ Fallo de Deadline en Proceso " + p.getId());
             }
             actual = actual.getSiguiente();
         }
+    }
+
+    // ======================== 9.4 — Tiempo de espera ========================
+
+    private void incrementarTiemposEspera() {
+        Nodo<Proceso> actual = memoria.getColaListos().getPrimerNodo();
+        while (actual != null) {
+            actual.getContenido().incrementarTiempoEspera();
+            actual = actual.getSiguiente();
+        }
+        // También contar espera en listos suspendidos
+        actual = memoria.getColaListosSuspendidos().getPrimerNodo();
+        while (actual != null) {
+            actual.getContenido().incrementarTiempoEspera();
+            actual = actual.getSiguiente();
+        }
+    }
+
+    // ======================== 9.1 — Utilización de CPU ========================
+
+    private void registrarUtilizacionCPU() {
+        boolean cpu1Activa = cpu1.getProcesoActual() != null;
+        boolean cpu2Activa = cpu2.getProcesoActual() != null;
+        metricas.registrarUtilizacion(reloj.getCicloGlobal(), cpu1Activa, cpu2Activa);
     }
 
     // ======================== Gestión de bloqueados ========================
@@ -308,6 +352,14 @@ public class Planificador extends Thread {
             Proceso p = algoritmo.seleccionarProceso(memoria.getColaListos());
             if (p != null) cpu2.asignarProceso(p);
         }
+    }
+
+    /**
+     * 9.2/9.5 — Llamado externamente (CPU/Memoria) cuando un proceso termina.
+     */
+    public void registrarProcesoTerminado(Proceso p) {
+        p.setCicloFinalizacion(reloj.getCicloGlobal());
+        metricas.registrarFinProceso(p);
     }
 
     public void detener() { this.enEjecucion = false; }

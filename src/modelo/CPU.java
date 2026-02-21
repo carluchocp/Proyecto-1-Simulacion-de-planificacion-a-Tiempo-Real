@@ -17,6 +17,7 @@ public class CPU extends Thread {
     private int id;
     private Memoria memoria;
     private Reloj reloj;
+    private Planificador planificador;
     private volatile Proceso procesoActual;
     private volatile boolean enEjecucion;
     private volatile boolean pausado;
@@ -47,6 +48,10 @@ public class CPU extends Thread {
      */
     public void setSemReloj(Semaphore semReloj) {
         this.semReloj = semReloj;
+    }
+
+    public void setPlanificador(Planificador planificador) {
+        this.planificador = planificador;
     }
 
     // ======================== 5.4 — Hilo sincronizado con el reloj ========================
@@ -89,6 +94,7 @@ public class CPU extends Thread {
                 procesoActual.detenerHilo();
                 memoria.encolarTerminado(procesoActual);
                 System.out.println("[CPU-" + id + "] " + procesoActual.getId() + " TERMINADO");
+                planificador.registrarProcesoTerminado(procesoActual);
                 procesoActual = null;
                 ciclosEnQuantum = 0;
                 return;

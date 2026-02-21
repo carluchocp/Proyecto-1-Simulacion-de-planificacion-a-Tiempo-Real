@@ -31,8 +31,11 @@ public class Proyecto1_Simulador {
 
         Planificador planificador = new Planificador(memoria, reloj, cpu1, cpu2);
 
+        cpu1.setPlanificador(planificador);
+        cpu2.setPlanificador(planificador);
+
         GeneradorInterrupciones generadorInterrupciones =
-                new GeneradorInterrupciones(cpu1, cpu2, reloj, planificador);
+                new GeneradorInterrupciones(cpu1, cpu2, reloj, planificador, memoria);
 
         Dashboard dashboard = new Dashboard(reloj, memoria, cpu1, cpu2,
                 planificador, generador, generadorInterrupciones);

@@ -41,6 +41,11 @@ public class Proceso implements Runnable {
     // --- CPU vs E/S ---
     private boolean cpuBound;
 
+    // --- Métricas 9.3/9.4 ---
+    private int cicloLlegada;       // ciclo en que el proceso entró al sistema
+    private int cicloFinalizacion;  // ciclo en que el proceso terminó
+    private int tiempoEspera;       // ciclos acumulados en cola de listos
+
     // ========== 5.2 — Concurrencia del proceso ==========
     private final Semaphore semEjecutar = new Semaphore(0);  // CPU lo despierta
     private final Semaphore semTerminoCiclo = new Semaphore(0); // Proceso avisa que terminó ciclo
@@ -71,6 +76,9 @@ public class Proceso implements Runnable {
         this.instruccionesEjecutadas = 0;
         this.ciclosESRestantes = 0;
         this.activo = true;
+        this.cicloLlegada = -1;
+        this.cicloFinalizacion = -1;
+        this.tiempoEspera = 0;
 
         // 5.2 — Crear e iniciar el hilo del proceso
         this.hilo = new Thread(this, "Proceso-" + id);
@@ -192,6 +200,16 @@ public class Proceso implements Runnable {
 
     public boolean isCpuBound() { return cpuBound; }
     public void setCpuBound(boolean cpuBound) { this.cpuBound = cpuBound; }
+
+    public int getCicloLlegada() { return cicloLlegada; }
+    public void setCicloLlegada(int cicloLlegada) { this.cicloLlegada = cicloLlegada; }
+
+    public int getCicloFinalizacion() { return cicloFinalizacion; }
+    public void setCicloFinalizacion(int cicloFinalizacion) { this.cicloFinalizacion = cicloFinalizacion; }
+
+    public int getTiempoEspera() { return tiempoEspera; }
+    public void setTiempoEspera(int tiempoEspera) { this.tiempoEspera = tiempoEspera; }
+    public void incrementarTiempoEspera() { this.tiempoEspera++; }
 
     // ======================== Métodos utilitarios ========================
 
