@@ -56,22 +56,19 @@ public class CPU extends Thread {
         procesoActual.setMar(procesoActual.getPc());
         ciclosEnQuantum++;
 
-        // 7.3: ¿Terminó?
         if (procesoActual.haTerminado()) {
             procesoActual.setEstado(EstadoProceso.TERMINADO);
-            memoria.encolarTerminado(procesoActual);
+            memoria.encolarTerminado(procesoActual);  // esto ahora decrementa procesosEnRAM
             System.out.println("[CPU-" + id + "] " + procesoActual.getId() + " TERMINADO");
             procesoActual = null;
             ciclosEnQuantum = 0;
             return;
         }
 
-        // 7.1 + 7.2 + 7.3: ¿Necesita E/S? → EJECUCION → BLOQUEADO
         if (procesoActual.necesitaES()) {
             procesoActual.setEstado(EstadoProceso.BLOQUEADO);
-            // 7.2: Asignar los ciclos que necesita para satisfacer la E/S
             procesoActual.setCiclosESRestantes(procesoActual.getDuracionES());
-            memoria.encolarBloqueadoDirecto(procesoActual);
+            memoria.encolarBloqueadoDirecto(procesoActual);  // sigue en RAM, no cambia contador
             System.out.println("[CPU-" + id + "] " + procesoActual.getId()
                     + " -> BLOQUEADO (E/S, " + procesoActual.getDuracionES() + " ciclos)");
             procesoActual = null;
@@ -135,4 +132,11 @@ public class CPU extends Thread {
     public int getCiclosEnQuantum() { return ciclosEnQuantum; }
 
     public void detener() { this.enEjecucion = false; }
+
+    public synchronized void limpiar() {
+        this.procesoActual = null;
+        this.ciclosEnQuantum = 0;
+        this.enInterrupcion = false;
+        this.pausado = true;
+    }
 }
