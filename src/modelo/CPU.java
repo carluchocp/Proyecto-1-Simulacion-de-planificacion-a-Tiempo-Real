@@ -46,18 +46,18 @@ public class CPU extends Thread {
             procesoActual = memoria.desencolarListo();
             if (procesoActual != null) {
                 procesoActual.setEstado(EstadoProceso.EJECUCION);
+                memoria.incrementarProcesosEnRAM();
             }
         }
 
         if (procesoActual != null) {
             procesoActual.avanzarCiclo();
 
-            if (procesoActual.getPc() >= procesoActual.getInstruccionesTotales()) {
+            if (procesoActual.haTerminado()) {
                 procesoActual.setEstado(EstadoProceso.TERMINADO);
-                memoria.getColaTerminados().encolar(procesoActual);
+                memoria.encolarTerminado(procesoActual);
                 procesoActual = null;
-            } else if ("E/S".equals(procesoActual.getTipoRequerimiento()) && 
-                       procesoActual.getPc() == procesoActual.getInstruccionesTotales() / 2) {
+            } else if (procesoActual.necesitaES()) {
                 procesoActual.setEstado(EstadoProceso.BLOQUEADO);
                 memoria.encolarBloqueado(procesoActual);
                 procesoActual = null;

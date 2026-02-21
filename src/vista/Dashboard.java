@@ -117,7 +117,7 @@ public class Dashboard extends JFrame {
             txtCpu1.setText("\n  Proceso: " + p1.getNombre() + "\n" +
                             "  ID: " + p1.getId() + "\n" +
                             "  PC: " + p1.getPc() + " / " + p1.getInstruccionesTotales() + "\n" +
-                            "  Tipo: " + p1.getTipoRequerimiento());
+                            "  Tipo: " + (p1.isCpuBound() ? "CPU" : "E/S"));
         } else {
             txtCpu1.setText("\n  [Inactiva - Esperando proceso]");
         }
@@ -127,7 +127,7 @@ public class Dashboard extends JFrame {
             txtCpu2.setText("\n  Proceso: " + p2.getNombre() + "\n" +
                             "  ID: " + p2.getId() + "\n" +
                             "  PC: " + p2.getPc() + " / " + p2.getInstruccionesTotales() + "\n" +
-                            "  Tipo: " + p2.getTipoRequerimiento());
+                            "  Tipo: " + (p2.isCpuBound() ? "CPU" : "E/S"));
         } else {
             txtCpu2.setText("\n  [Inactiva - Esperando proceso]");
         }
