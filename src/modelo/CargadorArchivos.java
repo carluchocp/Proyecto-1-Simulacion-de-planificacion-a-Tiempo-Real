@@ -16,6 +16,8 @@ import java.io.IOException;
 
 public class CargadorArchivos {
 
+    private static int contadorId = 0;
+
     /**
      * Carga procesos desde un archivo .csv o .json y los admite en memoria.
      * @return cantidad de procesos cargados, o -1 si hubo error.
@@ -62,18 +64,26 @@ public class CargadorArchivos {
         String[] partes = linea.split(",");
         if (partes.length < 9) return null;
 
-        String nombre = partes[0].trim();
-        int instrucciones = Integer.parseInt(partes[1].trim());
-        int prioridad = Integer.parseInt(partes[2].trim());
-        int deadline = Integer.parseInt(partes[3].trim());
-        boolean cpuBound = Boolean.parseBoolean(partes[4].trim());
-        boolean periodico = Boolean.parseBoolean(partes[5].trim());
-        int periodo = Integer.parseInt(partes[6].trim());
-        int ciclosParaES = Integer.parseInt(partes[7].trim());
-        int duracionES = Integer.parseInt(partes[8].trim());
+        try {
+            String nombre = partes[0].trim();
+            int instrucciones = Integer.parseInt(partes[1].trim());
+            int prioridad = Integer.parseInt(partes[2].trim());
+            int deadline = Integer.parseInt(partes[3].trim());
+            boolean cpuBound = Boolean.parseBoolean(partes[4].trim());
+            boolean periodico = Boolean.parseBoolean(partes[5].trim());
+            int periodo = Integer.parseInt(partes[6].trim());
+            int ciclosParaES = Integer.parseInt(partes[7].trim());
+            int duracionES = Integer.parseInt(partes[8].trim());
 
-        return new Proceso(nombre, instrucciones, prioridad, deadline,
-                cpuBound, periodico, periodo, ciclosParaES, duracionES);
+            if (nombre.isEmpty() || instrucciones <= 0) return null;
+
+            String id = "P" + (++contadorId);
+            // Orden: id, nombre, instruccionesTotales, prioridad, deadline, periodico, periodo, ciclosParaES, duracionES, cpuBound
+            return new Proceso(id, nombre, instrucciones, prioridad, deadline,
+                    periodico, periodo, ciclosParaES, duracionES, cpuBound);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     // ======================== JSON ========================
@@ -137,8 +147,10 @@ public class CargadorArchivos {
 
         if (nombre == null || instrucciones <= 0) return null;
 
-        return new Proceso(nombre, instrucciones, prioridad, deadline,
-                cpuBound, periodico, periodo, ciclosParaES, duracionES);
+        String id = "P" + (++contadorId);
+        // Orden: id, nombre, instruccionesTotales, prioridad, deadline, periodico, periodo, ciclosParaES, duracionES, cpuBound
+        return new Proceso(id, nombre, instrucciones, prioridad, deadline,
+                periodico, periodo, ciclosParaES, duracionES, cpuBound);
     }
 
     private static String extraerString(String obj, String clave) {
