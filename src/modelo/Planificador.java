@@ -4,6 +4,7 @@
  */
 package modelo;
 
+import estructuras.Cola;
 import estructuras.Nodo;
 import planificadores.AlgoritmoPlanificacion;
 import planificadores.PoliticaPlanificacion;
@@ -23,7 +24,8 @@ public class Planificador extends Thread {
     private Reloj reloj;
     private CPU cpu1;
     private CPU cpu2;
-    private boolean enEjecucion;
+    private volatile boolean enEjecucion;
+    private volatile boolean pausado;
     private AlgoritmoPlanificacion algoritmo;
 
     public Planificador(Memoria memoria, Reloj reloj, CPU cpu1, CPU cpu2) {
@@ -32,6 +34,7 @@ public class Planificador extends Thread {
         this.cpu1 = cpu1;
         this.cpu2 = cpu2;
         this.enEjecucion = false;
+        this.pausado = true;
         this.algoritmo = new FCFS();
     }
 
@@ -64,13 +67,14 @@ public class Planificador extends Thread {
         System.out.println("[PLANIFICADOR] Algoritmo cambiado a: " + politica.getDescripcion());
     }
 
-    public synchronized AlgoritmoPlanificacion getAlgoritmo() {
-        return algoritmo;
-    }
+    public synchronized AlgoritmoPlanificacion getAlgoritmo() { return algoritmo; }
+    public PoliticaPlanificacion getPoliticaActual() { return algoritmo.getPolitica(); }
 
-    public PoliticaPlanificacion getPoliticaActual() {
-        return algoritmo.getPolitica();
-    }
+    // ======================== Control ========================
+
+    public void pausar() { this.pausado = true; }
+    public void reanudar() { this.pausado = false; }
+    public boolean isPausado() { return pausado; }
 
     // ======================== Hilo principal ========================
 
@@ -80,9 +84,9 @@ public class Planificador extends Thread {
         int cicloAnterior = reloj.getCicloGlobal();
 
         while (enEjecucion) {
-            if (reloj.getCicloGlobal() > cicloAnterior) {
+            if (!pausado && reloj.getCicloGlobal() > cicloAnterior) {
                 cicloAnterior = reloj.getCicloGlobal();
-                cicloplanificacion();
+                cicloPlanificacion();
             }
             try {
                 Thread.sleep(2);
@@ -92,7 +96,7 @@ public class Planificador extends Thread {
         }
     }
 
-    private synchronized void cicloplanificacion() {
+    private synchronized void cicloPlanificacion() {
         actualizarDeadlines();
         gestionarBloqueados();
         verificarPreemption(cpu1);
@@ -104,15 +108,11 @@ public class Planificador extends Thread {
     // ======================== Gestión de deadlines ========================
 
     private void actualizarDeadlines() {
-        // Decrementar deadline de todos los procesos en Listos
         decrementarDeadlineCola(memoria.getColaListos());
-        // Decrementar deadline de Bloqueados
         decrementarDeadlineCola(memoria.getColaBloqueados());
-        // Decrementar deadline de Suspendidos
         decrementarDeadlineCola(memoria.getColaListosSuspendidos());
         decrementarDeadlineCola(memoria.getColaBloqueadosSuspendidos());
 
-        // Decrementar deadline de procesos en CPUs
         if (cpu1.getProcesoActual() != null) {
             cpu1.getProcesoActual().setTiempoRestanteDeadline(
                 cpu1.getProcesoActual().getTiempoRestanteDeadline() - 1);
@@ -123,14 +123,13 @@ public class Planificador extends Thread {
         }
     }
 
-    private void decrementarDeadlineCola(estructuras.Cola<Proceso> cola) {
+    private void decrementarDeadlineCola(Cola<Proceso> cola) {
         Nodo<Proceso> actual = cola.getPrimerNodo();
         while (actual != null) {
             Proceso p = actual.getContenido();
             p.setTiempoRestanteDeadline(p.getTiempoRestanteDeadline() - 1);
             if (p.deadlineExpirado()) {
-                System.out.println("[DEADLINE] Fallo de Deadline en Proceso " + p.getId()
-                    + " (" + p.getNombre() + ")");
+                System.out.println("[DEADLINE] Fallo en Proceso " + p.getId());
             }
             actual = actual.getSiguiente();
         }
@@ -139,7 +138,6 @@ public class Planificador extends Thread {
     // ======================== Gestión de bloqueados ========================
 
     private void gestionarBloqueados() {
-        // Decrementar ciclos de E/S restantes
         Nodo<Proceso> actual = memoria.getColaBloqueados().getPrimerNodo();
         while (actual != null) {
             actual.getContenido().setCiclosESRestantes(
@@ -147,8 +145,7 @@ public class Planificador extends Thread {
             actual = actual.getSiguiente();
         }
 
-        // Mover los que terminaron E/S a la cola de listos
-        estructuras.Cola<Proceso> sigueEnBloqueado = new estructuras.Cola<>();
+        Cola<Proceso> sigueEnBloqueado = new Cola<>();
         Proceso p;
         while ((p = memoria.getColaBloqueados().desencolar()) != null) {
             if (p.getCiclosESRestantes() <= 0) {
@@ -168,21 +165,16 @@ public class Planificador extends Thread {
 
     private void verificarPreemption(CPU cpu) {
         Proceso enCPU = cpu.getProcesoActual();
-        if (enCPU == null) {
-            return;
-        }
+        if (enCPU == null) return;
 
-        // Preemption por quantum (Round Robin)
         if (algoritmo.usaQuantum() && cpu.getCiclosEnQuantum() >= algoritmo.getQuantum()) {
             System.out.println("[PREEMPTION] Quantum expirado para " + enCPU.getId());
             cpu.preemptar();
             return;
         }
 
-        // Preemption por algoritmo (SRT, Prioridad, EDF)
         if (algoritmo.debePreemptar(enCPU, memoria.getColaListos())) {
-            System.out.println("[PREEMPTION] " + algoritmo.getPolitica()
-                    + " desaloja a " + enCPU.getId());
+            System.out.println("[PREEMPTION] " + algoritmo.getPolitica() + " desaloja a " + enCPU.getId());
             cpu.preemptar();
         }
     }
@@ -192,19 +184,13 @@ public class Planificador extends Thread {
     private void asignarProcesosACPUs() {
         if (cpu1.getProcesoActual() == null && !memoria.getColaListos().estaVacia()) {
             Proceso p = algoritmo.seleccionarProceso(memoria.getColaListos());
-            if (p != null) {
-                cpu1.asignarProceso(p);
-            }
+            if (p != null) cpu1.asignarProceso(p);
         }
         if (cpu2.getProcesoActual() == null && !memoria.getColaListos().estaVacia()) {
             Proceso p = algoritmo.seleccionarProceso(memoria.getColaListos());
-            if (p != null) {
-                cpu2.asignarProceso(p);
-            }
+            if (p != null) cpu2.asignarProceso(p);
         }
     }
 
-    public void detener() {
-        this.enEjecucion = false;
-    }
+    public void detener() { this.enEjecucion = false; }
 }

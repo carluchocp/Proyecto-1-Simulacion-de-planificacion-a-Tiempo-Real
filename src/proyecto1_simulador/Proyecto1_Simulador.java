@@ -14,22 +14,23 @@ import vista.Dashboard;
 public class Proyecto1_Simulador {
 
     public static void main(String[] args) {
-        
+
         Memoria memoria = new Memoria(10);
-        
+
         GeneradorProcesos generador = new GeneradorProcesos();
         generador.generarProcesosIniciales(memoria, 20);
-        
+
         Reloj reloj = new Reloj();
-        
+
         CPU cpu1 = new CPU(1, memoria, reloj);
         CPU cpu2 = new CPU(2, memoria, reloj);
-        
+
         Planificador planificador = new Planificador(memoria, reloj, cpu1, cpu2);
-        
+
         Dashboard dashboard = new Dashboard(reloj, memoria, cpu1, cpu2, planificador, generador);
         dashboard.setVisible(true);
-        
+
+        // Iniciar threads (pausados - el Dashboard controla cuándo arrancan)
         reloj.start();
         planificador.start();
         cpu1.start();

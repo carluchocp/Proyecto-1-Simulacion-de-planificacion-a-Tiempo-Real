@@ -15,6 +15,7 @@ public class CPU extends Thread {
     private Reloj reloj;
     private volatile Proceso procesoActual;
     private volatile boolean enEjecucion;
+    private volatile boolean pausado;
     private int ciclosEnQuantum;
 
     public CPU(int id, Memoria memoria, Reloj reloj) {
@@ -22,6 +23,7 @@ public class CPU extends Thread {
         this.memoria = memoria;
         this.reloj = reloj;
         this.enEjecucion = false;
+        this.pausado = true;
         this.ciclosEnQuantum = 0;
     }
 
@@ -31,7 +33,7 @@ public class CPU extends Thread {
         int cicloAnterior = reloj.getCicloGlobal();
 
         while (enEjecucion) {
-            if (reloj.getCicloGlobal() > cicloAnterior) {
+            if (!pausado && reloj.getCicloGlobal() > cicloAnterior) {
                 cicloAnterior = reloj.getCicloGlobal();
                 ejecutarCiclo();
             }
@@ -45,15 +47,13 @@ public class CPU extends Thread {
 
     private synchronized void ejecutarCiclo() {
         if (procesoActual == null) {
-            return; // El Planificador se encarga de asignar
+            return;
         }
 
-        // Ejecutar una instrucción
         procesoActual.avanzarCiclo();
         procesoActual.setMar(procesoActual.getPc());
         ciclosEnQuantum++;
 
-        // ¿Terminó?
         if (procesoActual.haTerminado()) {
             procesoActual.setEstado(EstadoProceso.TERMINADO);
             memoria.encolarTerminado(procesoActual);
@@ -63,7 +63,6 @@ public class CPU extends Thread {
             return;
         }
 
-        // ¿Necesita E/S?
         if (procesoActual.necesitaES()) {
             procesoActual.setEstado(EstadoProceso.BLOQUEADO);
             procesoActual.setCiclosESRestantes(procesoActual.getCiclosParaES());
@@ -74,8 +73,10 @@ public class CPU extends Thread {
         }
     }
 
-    // ======================== Asignación y Preemption ========================
-
+    /**
+     * Asigna un proceso a esta CPU. El proceso ya estaba en RAM
+     * (vino de colaListos), así que no se modifica el contador.
+     */
     public synchronized void asignarProceso(Proceso p) {
         p.setEstado(EstadoProceso.EJECUCION);
         this.procesoActual = p;
@@ -83,31 +84,29 @@ public class CPU extends Thread {
         System.out.println("[CPU-" + id + "] Ejecutando: " + p.getId());
     }
 
+    /**
+     * Preempta el proceso actual y lo regresa a la cola de listos.
+     * Usa reEncolarListo porque el proceso ya estaba en RAM.
+     */
     public synchronized void preemptar() {
         if (procesoActual != null) {
             procesoActual.setEstado(EstadoProceso.LISTO);
-            memoria.getColaListos().encolar(procesoActual);
+            memoria.reEncolarListo(procesoActual);
             System.out.println("[CPU-" + id + "] Preemptado: " + procesoActual.getId());
             procesoActual = null;
             ciclosEnQuantum = 0;
         }
     }
 
-    // ======================== Getters ========================
+    // ======================== Control ========================
 
-    public synchronized Proceso getProcesoActual() {
-        return procesoActual;
-    }
+    public void pausar() { this.pausado = true; }
+    public void reanudar() { this.pausado = false; }
+    public boolean isPausado() { return pausado; }
 
-    public int getCpuId() {
-        return id;
-    }
+    public synchronized Proceso getProcesoActual() { return procesoActual; }
+    public int getCpuId() { return id; }
+    public int getCiclosEnQuantum() { return ciclosEnQuantum; }
 
-    public int getCiclosEnQuantum() {
-        return ciclosEnQuantum;
-    }
-
-    public void detener() {
-        this.enEjecucion = false;
-    }
+    public void detener() { this.enEjecucion = false; }
 }

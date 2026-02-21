@@ -64,6 +64,9 @@ public class Dashboard extends JFrame {
     private JComboBox<PoliticaPlanificacion> cmbAlgoritmo;
     private JSpinner spnQuantum;
     private JSpinner spnVelocidad;
+    private JButton btnIniciar;
+    private JButton btnPausar;
+    private boolean simulacionIniciada = false;
 
     // --- Timer UI ---
     private Timer timerUI;
@@ -104,9 +107,9 @@ public class Dashboard extends JFrame {
         lblReloj.setFont(new Font("Consolas", Font.BOLD, 22));
         lblReloj.setForeground(Color.GREEN);
 
-        lblEstadoSistema = new JLabel("  [Usuario]  ");
+        lblEstadoSistema = new JLabel("  [Detenido]  ");
         lblEstadoSistema.setFont(new Font("Consolas", Font.BOLD, 16));
-        lblEstadoSistema.setForeground(Color.CYAN);
+        lblEstadoSistema.setForeground(Color.ORANGE);
         lblEstadoSistema.setOpaque(true);
         lblEstadoSistema.setBackground(new Color(50, 50, 50));
 
@@ -120,7 +123,26 @@ public class Dashboard extends JFrame {
         panelIzqSup.add(lblEstadoSistema);
         panelIzqSup.add(lblAlgoritmoActual);
 
+        // Botones de control en la barra superior
+        btnIniciar = new JButton("▶ Iniciar");
+        btnIniciar.setFont(new Font("Consolas", Font.BOLD, 14));
+        btnIniciar.setBackground(new Color(0, 150, 0));
+        btnIniciar.setForeground(Color.WHITE);
+
+        btnPausar = new JButton("⏸ Pausar");
+        btnPausar.setFont(new Font("Consolas", Font.BOLD, 14));
+        btnPausar.setEnabled(false);
+
+        btnIniciar.addActionListener(e -> iniciarSimulacion());
+        btnPausar.addActionListener(e -> togglePausa());
+
+        JPanel panelBotonesSup = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        panelBotonesSup.setOpaque(false);
+        panelBotonesSup.add(btnIniciar);
+        panelBotonesSup.add(btnPausar);
+
         panelSuperior.add(panelIzqSup, BorderLayout.WEST);
+        panelSuperior.add(panelBotonesSup, BorderLayout.EAST);
         add(panelSuperior, BorderLayout.NORTH);
 
         // ===================== PANEL CENTRAL =====================
@@ -154,7 +176,6 @@ public class Dashboard extends JFrame {
 
         panelCentral.add(panelCPUs, BorderLayout.NORTH);
         panelCentral.add(panelColas, BorderLayout.CENTER);
-
         add(panelCentral, BorderLayout.CENTER);
 
         // ===================== PANEL DERECHO (Controles + Métricas) =====================
@@ -186,13 +207,11 @@ public class Dashboard extends JFrame {
             agregarLog("Algoritmo cambiado a: " + pol.getDescripcion());
         });
         panelAlgoritmo.add(btnCambiarAlg);
-
         panelDerecho.add(panelAlgoritmo);
 
         // --- Velocidad del reloj ---
         JPanel panelVelocidad = new JPanel(new GridLayout(0, 1, 4, 4));
         panelVelocidad.setBorder(BorderFactory.createTitledBorder("Velocidad"));
-
         JPanel panelSpnVel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         panelSpnVel.add(new JLabel("Ciclo (ms):"));
         spnVelocidad = new JSpinner(new SpinnerNumberModel(
@@ -204,28 +223,26 @@ public class Dashboard extends JFrame {
         });
         panelSpnVel.add(spnVelocidad);
         panelVelocidad.add(panelSpnVel);
-
         panelDerecho.add(panelVelocidad);
 
         // --- Acciones ---
         JPanel panelAcciones = new JPanel(new GridLayout(0, 1, 4, 4));
         panelAcciones.setBorder(BorderFactory.createTitledBorder("Acciones"));
 
-        JButton btnGenerar20 = new JButton("Generar 20 Procesos Aleatorios");
+        JButton btnGenerar20 = new JButton("Generar 20 Procesos");
         btnGenerar20.addActionListener(e -> {
             generador.generarProcesosIniciales(memoria, 20);
             agregarLog("20 procesos aleatorios generados");
         });
         panelAcciones.add(btnGenerar20);
 
-        JButton btnGenerar1 = new JButton("Generar Tarea de Emergencia");
+        JButton btnGenerar1 = new JButton("Tarea de Emergencia");
         btnGenerar1.addActionListener(e -> {
             Proceso p = generador.crearProcesoAleatorio();
             memoria.admitirProceso(p);
-            agregarLog("Emergencia: " + p.getId() + " (" + p.getNombre() + ") creado");
+            agregarLog("Emergencia: " + p.getId() + " creado");
         });
         panelAcciones.add(btnGenerar1);
-
         panelDerecho.add(panelAcciones);
 
         // --- Métricas ---
@@ -254,8 +271,8 @@ public class Dashboard extends JFrame {
         panelMetricas.add(lblDeadlineCumplidos);
         panelMetricas.add(lblDeadlineFallidos);
         panelMetricas.add(lblTasaExito);
-
         panelDerecho.add(panelMetricas);
+
         add(panelDerecho, BorderLayout.EAST);
 
         // ===================== PANEL INFERIOR (Log) =====================
@@ -267,6 +284,50 @@ public class Dashboard extends JFrame {
         JScrollPane scrollLog = new JScrollPane(txtLog);
         scrollLog.setBorder(BorderFactory.createTitledBorder("Log de Eventos"));
         add(scrollLog, BorderLayout.SOUTH);
+    }
+
+    // ======================== Control de simulación ========================
+
+    private void iniciarSimulacion() {
+        if (!simulacionIniciada) {
+            // Aplicar algoritmo seleccionado antes de iniciar
+            PoliticaPlanificacion pol = (PoliticaPlanificacion) cmbAlgoritmo.getSelectedItem();
+            int quantum = (int) spnQuantum.getValue();
+            planificador.cambiarAlgoritmo(pol, quantum);
+
+            simulacionIniciada = true;
+            btnIniciar.setEnabled(false);
+            btnPausar.setEnabled(true);
+            agregarLog("Simulación iniciada con " + pol.getDescripcion());
+        }
+
+        // Reanudar todos los componentes
+        planificador.reanudar();
+        cpu1.reanudar();
+        cpu2.reanudar();
+
+        lblEstadoSistema.setText("  [Ejecutando]  ");
+        lblEstadoSistema.setForeground(Color.GREEN);
+    }
+
+    private void togglePausa() {
+        if (planificador.isPausado()) {
+            planificador.reanudar();
+            cpu1.reanudar();
+            cpu2.reanudar();
+            btnPausar.setText("⏸ Pausar");
+            lblEstadoSistema.setText("  [Ejecutando]  ");
+            lblEstadoSistema.setForeground(Color.GREEN);
+            agregarLog("Simulación reanudada");
+        } else {
+            planificador.pausar();
+            cpu1.pausar();
+            cpu2.pausar();
+            btnPausar.setText("▶ Reanudar");
+            lblEstadoSistema.setText("  [Pausado]  ");
+            lblEstadoSistema.setForeground(Color.ORANGE);
+            agregarLog("Simulación pausada");
+        }
     }
 
     // ======================== Helpers UI ========================
@@ -300,7 +361,9 @@ public class Dashboard extends JFrame {
         timerUI = new Timer(100, e -> {
             lblReloj.setText("Ciclo: " + reloj.getCicloGlobal());
             lblAlgoritmoActual.setText("Algoritmo: " + planificador.getPoliticaActual());
-            actualizarIndicadorSistema();
+            if (simulacionIniciada && !planificador.isPausado()) {
+                actualizarIndicadorSistema();
+            }
             actualizarCPUs();
             actualizarColas();
             actualizarMetricas();
