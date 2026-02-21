@@ -6,21 +6,25 @@ package modelo;
 
 /**
  *
- * @author diego
+ * @author carluchocp
  */
 public class CPU extends Thread {
-    
+
     private int id;
     private Memoria memoria;
     private Reloj reloj;
-    private Proceso procesoActual;
-    private boolean enEjecucion;
+    private volatile Proceso procesoActual;
+    private volatile boolean enEjecucion;
+    private volatile boolean pausado;
+    private int ciclosEnQuantum;
 
     public CPU(int id, Memoria memoria, Reloj reloj) {
         this.id = id;
         this.memoria = memoria;
         this.reloj = reloj;
         this.enEjecucion = false;
+        this.pausado = true;
+        this.ciclosEnQuantum = 0;
     }
 
     @Override
@@ -29,7 +33,7 @@ public class CPU extends Thread {
         int cicloAnterior = reloj.getCicloGlobal();
 
         while (enEjecucion) {
-            if (reloj.getCicloGlobal() > cicloAnterior) {
+            if (!pausado && reloj.getCicloGlobal() > cicloAnterior) {
                 cicloAnterior = reloj.getCicloGlobal();
                 ejecutarCiclo();
             }
@@ -41,39 +45,68 @@ public class CPU extends Thread {
         }
     }
 
-    private void ejecutarCiclo() {
+    private synchronized void ejecutarCiclo() {
         if (procesoActual == null) {
-            procesoActual = memoria.desencolarListo();
-            if (procesoActual != null) {
-                procesoActual.setEstado(EstadoProceso.EJECUCION);
-                memoria.incrementarProcesosEnRAM();
-            }
+            return;
         }
 
+        procesoActual.avanzarCiclo();
+        procesoActual.setMar(procesoActual.getPc());
+        ciclosEnQuantum++;
+
+        if (procesoActual.haTerminado()) {
+            procesoActual.setEstado(EstadoProceso.TERMINADO);
+            memoria.encolarTerminado(procesoActual);
+            System.out.println("[CPU-" + id + "] " + procesoActual.getId() + " TERMINADO");
+            procesoActual = null;
+            ciclosEnQuantum = 0;
+            return;
+        }
+
+        if (procesoActual.necesitaES()) {
+            procesoActual.setEstado(EstadoProceso.BLOQUEADO);
+            procesoActual.setCiclosESRestantes(procesoActual.getCiclosParaES());
+            memoria.encolarBloqueadoDirecto(procesoActual);
+            System.out.println("[CPU-" + id + "] " + procesoActual.getId() + " -> BLOQUEADO (E/S)");
+            procesoActual = null;
+            ciclosEnQuantum = 0;
+        }
+    }
+
+    /**
+     * Asigna un proceso a esta CPU. El proceso ya estaba en RAM
+     * (vino de colaListos), así que no se modifica el contador.
+     */
+    public synchronized void asignarProceso(Proceso p) {
+        p.setEstado(EstadoProceso.EJECUCION);
+        this.procesoActual = p;
+        this.ciclosEnQuantum = 0;
+        System.out.println("[CPU-" + id + "] Ejecutando: " + p.getId());
+    }
+
+    /**
+     * Preempta el proceso actual y lo regresa a la cola de listos.
+     * Usa reEncolarListo porque el proceso ya estaba en RAM.
+     */
+    public synchronized void preemptar() {
         if (procesoActual != null) {
-            procesoActual.avanzarCiclo();
-
-            if (procesoActual.haTerminado()) {
-                procesoActual.setEstado(EstadoProceso.TERMINADO);
-                memoria.encolarTerminado(procesoActual);
-                procesoActual = null;
-            } else if (procesoActual.necesitaES()) {
-                procesoActual.setEstado(EstadoProceso.BLOQUEADO);
-                memoria.encolarBloqueado(procesoActual);
-                procesoActual = null;
-            }
+            procesoActual.setEstado(EstadoProceso.LISTO);
+            memoria.reEncolarListo(procesoActual);
+            System.out.println("[CPU-" + id + "] Preemptado: " + procesoActual.getId());
+            procesoActual = null;
+            ciclosEnQuantum = 0;
         }
     }
 
-    public Proceso getProcesoActual() {
-        return procesoActual;
-    }
+    // ======================== Control ========================
 
-    public int getCpuId() {
-        return id;
-    }
+    public void pausar() { this.pausado = true; }
+    public void reanudar() { this.pausado = false; }
+    public boolean isPausado() { return pausado; }
 
-    public void detener() {
-        this.enEjecucion = false;
-    }
+    public synchronized Proceso getProcesoActual() { return procesoActual; }
+    public int getCpuId() { return id; }
+    public int getCiclosEnQuantum() { return ciclosEnQuantum; }
+
+    public void detener() { this.enEjecucion = false; }
 }

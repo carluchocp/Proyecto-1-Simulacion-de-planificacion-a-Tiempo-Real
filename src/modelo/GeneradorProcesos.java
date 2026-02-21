@@ -27,13 +27,8 @@ public class GeneradorProcesos {
         for (int i = 0; i < cantidad; i++) {
             Proceso p = crearProcesoAleatorio();
             memoria.encolarNuevo(p);
-            // Admitir en RAM o suspender según capacidad
-            Proceso nuevo = memoria.desencolarNuevo();
-            if (nuevo != null) {
-                memoria.encolarListo(nuevo);
-            }
         }
-        System.out.println(cantidad + " procesos generados exitosamente.");
+        System.out.println(cantidad + " procesos generados y encolados en Nuevos.");
     }
 
     /**

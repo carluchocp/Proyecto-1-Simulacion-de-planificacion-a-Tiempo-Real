@@ -4,52 +4,56 @@
  */
 package estructuras;
 
+/**
+ *
+ * @author carluchocp
+ */
 public class Cola<T> {
-    
-    private Nodo<T> pFirst;
-    private Nodo<T> pLast;
-    private int size;
+
+    private Nodo<T> primero;
+    private Nodo<T> ultimo;
+    private int tamano;
 
     public Cola() {
-        this.pFirst = null;
-        this.pLast = null;
-        this.size = 0;
+        this.primero = null;
+        this.ultimo = null;
+        this.tamano = 0;
     }
 
-    public boolean esVacia() {
-        return pFirst == null;
-    }
-
-    public void encolar(T dato) {
-        Nodo<T> nuevo = new Nodo<>(dato);
-        if (esVacia()) {
-            pFirst = nuevo;
-            pLast = nuevo;
+    public void encolar(T contenido) {
+        Nodo<T> nuevo = new Nodo<>(contenido);
+        if (ultimo == null) {
+            primero = nuevo;
+            ultimo = nuevo;
         } else {
-            pLast.setSiguiente(nuevo);
-            pLast = nuevo;
+            ultimo.setSiguiente(nuevo);
+            ultimo = nuevo;
         }
-        size++;
+        tamano++;
     }
 
     public T desencolar() {
-        if (esVacia()) {
+        if (primero == null) {
             return null;
         }
-        T dato = pFirst.getContenido();
-        pFirst = pFirst.getSiguiente();
-        if (pFirst == null) {
-            pLast = null;
+        T contenido = primero.getContenido();
+        primero = primero.getSiguiente();
+        if (primero == null) {
+            ultimo = null;
         }
-        size--;
-        return dato;
+        tamano--;
+        return contenido;
+    }
+
+    public boolean estaVacia() {
+        return primero == null;
     }
 
     public Nodo<T> getPrimerNodo() {
-        return pFirst;
+        return primero;
     }
 
-    public int getSize() {
-        return size;
+    public int getTamano() {
+        return tamano;
     }
 }
