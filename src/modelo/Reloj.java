@@ -6,61 +6,44 @@ package modelo;
 
 /**
  *
- * @author diego
+ * @author carluchocp
  */
 public class Reloj extends Thread {
-    
-    private int cicloGlobal;
-    private int duracionCiclo; 
-    private boolean enEjecucion;
+
+    private volatile int cicloGlobal;
+    private volatile int duracionCiclo; // en ms
+    private volatile boolean enEjecucion;
+    private volatile boolean pausado;
 
     public Reloj() {
         this.cicloGlobal = 0;
-        
-        this.duracionCiclo = 1000; 
+        this.duracionCiclo = 500;
         this.enEjecucion = false;
+        this.pausado = true; // Empieza pausado
     }
 
-    
     @Override
     public void run() {
         this.enEjecucion = true;
-        
         while (enEjecucion) {
             try {
-                
                 Thread.sleep(duracionCiclo);
-                
-                
-                cicloGlobal++;
-                
-               
-                
+                if (!pausado) {
+                    cicloGlobal++;
+                }
             } catch (InterruptedException e) {
-                System.out.println("El reloj del sistema fue interrumpido.");
+                enEjecucion = false;
             }
         }
     }
 
-    
+    public int getCicloGlobal() { return cicloGlobal; }
+    public int getDuracionCiclo() { return duracionCiclo; }
+    public void setDuracionCiclo(int duracionCiclo) { this.duracionCiclo = duracionCiclo; }
 
-    public int getCicloGlobal() {
-        return cicloGlobal;
-    }
+    public void pausar() { this.pausado = true; }
+    public void reanudar() { this.pausado = false; }
+    public boolean isPausado() { return pausado; }
 
-    public int getDuracionCiclo() {
-        return duracionCiclo;
-    }
-
-    
-    public void setDuracionCiclo(int duracionCiclo) {
-        if (duracionCiclo > 0) {
-            this.duracionCiclo = duracionCiclo;
-        }
-    }
-
-
-    public void detener() {
-        this.enEjecucion = false;
-    }
+    public void detener() { this.enEjecucion = false; }
 }
