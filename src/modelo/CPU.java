@@ -52,12 +52,11 @@ public class CPU extends Thread {
         if (procesoActual != null) {
             procesoActual.avanzarCiclo();
 
-            if (procesoActual.getPc() >= procesoActual.getInstruccionesTotales()) {
+            if (procesoActual.haTerminado()) {
                 procesoActual.setEstado(EstadoProceso.TERMINADO);
                 memoria.getColaTerminados().encolar(procesoActual);
                 procesoActual = null;
-            } else if ("E/S".equals(procesoActual.getTipoRequerimiento()) && 
-                       procesoActual.getPc() == procesoActual.getInstruccionesTotales() / 2) {
+            } else if (procesoActual.necesitaES()) {
                 procesoActual.setEstado(EstadoProceso.BLOQUEADO);
                 memoria.encolarBloqueado(procesoActual);
                 procesoActual = null;

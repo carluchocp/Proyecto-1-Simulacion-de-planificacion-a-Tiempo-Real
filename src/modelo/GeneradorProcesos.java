@@ -44,18 +44,26 @@ public class GeneradorProcesos {
         // Instrucciones aleatorias (por ejemplo, entre 10 y 50 ciclos)
         int instrucciones = random.nextInt(41) + 10; 
         
-        // Tipo de requerimiento (50% probabilidad de CPU, 50% de E/S)
-        String[] tipos = {"CPU", "E/S"};
-        String tipo = tipos[random.nextInt(2)];
+        // CPU-bound (true) o IO-bound (false) con 50% probabilidad
+        boolean cpuBound = random.nextBoolean();
         
-        // Deadline (Debe ser mayor a las instrucciones para que sea posible cumplirlo)
-        // Le sumamos un extra aleatorio entre 10 y 50 ciclos más.
+        // Deadline (mayor a instrucciones, +10 a +50 extra)
         int deadline = instrucciones + random.nextInt(41) + 10;
         
-        // Prioridad aleatoria (Supongamos que va del 1 al 5, donde 1 es la más alta)
+        // Prioridad aleatoria (1 a 5, donde 1 es la más alta)
         int prioridad = random.nextInt(5) + 1;
 
+        // Periódico o aperiódico (30% periódico)
+        boolean periodico = random.nextInt(10) < 3;
+        int periodo = periodico ? (random.nextInt(20) + 10) : 0;
+
+        // Ciclos para E/S: si es IO-bound cada 3-8 ciclos, si es CPU-bound cada 15-30 o 0
+        int ciclosParaES = cpuBound 
+            ? (random.nextBoolean() ? 0 : random.nextInt(16) + 15)
+            : (random.nextInt(6) + 3);
+
         // Retornamos el proceso recién fabricado
-        return new Proceso(id, nombre, instrucciones, tipo, deadline, prioridad);
+        return new Proceso(id, nombre, instrucciones, prioridad, deadline,
+                           periodico, periodo, ciclosParaES, cpuBound);
     }
 }

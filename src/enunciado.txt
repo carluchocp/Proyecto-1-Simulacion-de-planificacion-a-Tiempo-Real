@@ -1,0 +1,216 @@
+Proyecto 1: Simulación de planificación a Tiempo Real
+
+Planteamiento del Problema
+    El objetivo fundamental de este proyecto es que los estudiantes desarrollen
+    un simulador de un Sistema Operativo de Tiempo Real (RTOS) diseñado para la
+    gestión de un microsatélite de investigación. A diferencia de los sistemas de
+    propósito general, un sistema de tiempo real debe garantizar no solo que los
+    resultados lógicos sean correctos, sino que estos se produzcan dentro de intervalos
+    de tiempo específicos y predecibles.
+
+    A través de este desarrollo, los estudiantes analizarán los conceptos de
+    determinismo (el tiempo que tarda el sistema en reconocer una interrupción) y
+    capacidad de respuesta (el tiempo que tarda el sistema en procesar dicha
+    interrupción). El simulador deberá modelar un entorno de misión crítica donde el
+    incumplimiento de un tiempo límite o deadline puede comprometer la integridad del
+    satélite o la pérdida de datos científicos invaluables.
+
+    El sistema deberá gestionar procesos con características diversas. Por un
+    lado, existirán tareas periódicas, como el monitoreo de altitud o temperatura, que
+    llegan en intervalos regulares. Por otro lado, el sistema debe ser capaz de procesar
+    tareas aperiódicas, disparadas por eventos externos inesperados (interrupciones de
+    hardware) o comandos enviados desde la estación terrestre. Cada proceso vendrá
+    definido por su nombre, cantidad de instrucciones, requerimiento de CPU o E/S, y lo
+    más importante: su tiempo límite de finalización (deadline) y su prioridad.
+
+    Para asegurar un comportamiento realista, el simulador debe implementar un
+    modelo de estados de procesos completo, incluyendo: Nuevo, Listo, Ejecución,
+    Bloqueado, Terminado y los estados de transición a memoria secundaria:
+    Listo/Suspendido y Bloqueado/Suspendido. El planificador de mediano plazo deberá
+    decidir qué procesos enviar a la cola de suspendidos cuando la memoria principal
+    del satélite esté saturada por ráfagas de datos, priorizando siempre la permanencia
+    en memoria de los procesos críticos con deadlines cercanos.
+
+    Se debe desarrollar el manejo de interrupciones mediante hilos (Threads). El
+    simulador debe ser capaz de generar eventos asíncronos (como el impacto de un
+    micro-meteorito o una ráfaga solar) que disparen rutinas de servicio de interrupción
+    (ISR). Estos eventos deben suspender inmediatamente la ejecución del proceso
+    actual en la CPU para atender la emergencia, permitiendo a los estudiantes
+    observar en tiempo real cómo el sistema operativo recupera el control y re-planifica
+    las tareas para intentar cumplir con todos los cronogramas.
+
+    La simulación debe proporcionar una visualización clara y detallada de la
+    dinámica del sistema. La interfaz gráfica mostrará el estado actual de todas las
+    colas y los datos de cada PCB (Process Control Block), incluyendo el contador de
+    programa (PC), el registro de dirección de memoria (MAR) y una cuenta regresiva
+    visual para los deadlines.
+
+    Se espera que el sistema permita al usuario alternar dinámicamente entre
+    políticas de planificación de propósito general, específicamente
+    First-Come-First-Served (FCFS), Round Robin (RR) y Shortest Remaining Time
+    (SRT), y políticas especializadas de tiempo real descritas en el texto de Stallings:
+    Prioridad Estática Preemptiva para la gestión de tareas periódicas, y Earliest
+    Deadline First (EDF) para la planificación dinámica basada en la proximidad del
+    tiempo límite.
+
+    Finalmente, el simulador deberá ser robusto y permitir la configuración
+    dinámica de parámetros como la duración del ciclo de instrucción y la carga de
+    procesos desde archivos JSON o CSV. Se requerirá la generación de gráficas de
+    rendimiento que ilustren la utilización del procesador y, fundamentalmente, la tasa
+    de éxito en el cumplimiento de los tiempos límite, permitiendo evaluar la eficiencia
+    de las distintas políticas bajo escenarios de estrés y fallos moderados (fail-soft
+    operation).
+
+Requerimientos funcionales
+    ● Implementación de Concurrencia y Exclusión Mutua:
+        ○ Se debe hacer uso obligatorio de Hilos (Threads) para la simulación
+          de los procesos y el reloj del sistema.
+        ○ Uso de semáforos (Semaphores) para garantizar la exclusión mutua
+          en el acceso a las colas y recursos compartidos.
+        ○ El manejo de interrupciones externas (eventos de misión) debe
+          realizarse con el uso de Threads independientes que suspendan la
+          ejecución actual.
+    
+    ● Políticas de Planificación:
+        ○ Se deben desarrollar 5 políticas de planificación: 3 de propósito
+          general (FCFS, Round Robin, SRT) y 2 de tiempo real (Prioridad
+          Estática Preemptiva, y EDF).
+        ○ El sistema debe permitir el intercambio dinámico de algoritmos durante
+          la ejecución.
+        ○ Cualquier cambio en el ordenamiento de las colas (por llegada de un
+          proceso con menor deadline o fin de quantum) debe ser visible de
+          inmediato.
+
+    ● Gestión y Carga de Procesos:
+        ○ Configuración Inicial Dinámica: Al iniciar el simulador por primera
+          vez, el sistema no dependerá de archivos externos; en su lugar,
+          deberá generar automáticamente un conjunto inicial de procesos con
+          parámetros aleatorios (instrucciones, prioridad, periodos y deadlines)
+          para poblar las colas de estado.
+        ○ Creación Masiva de Procesos: La interfaz debe contar con un botón
+          funcional etiquetado como "Generar 20 Procesos Aleatorios". Esta
+          función tiene como objetivo agilizar las pruebas de rendimiento y
+          estresar el planificador de manera inmediata sin necesidad de carga
+          manual.
+        ○ Generación de Tareas de Emergencia: Debe estar presente la
+          funcionalidad de añadir procesos aleatorios individuales durante la
+          ejecución para observar el comportamiento del sistema ante nuevas
+          ráfagas de CPU o E/S.
+
+    ● Modelo de Estados y Memoria:
+        ○ El sistema debe implementar estrictamente el modelo de estados:
+          Nuevo, Listo, Ejecución, Bloqueado, Terminado, Listo-Suspendido
+          y Bloqueado-Suspendido.
+        ○ Se debe gestionar la transición a Suspendido cuando la memoria
+          principal (definida por un número máximo de procesos en el sistema)
+          esté saturada.
+        ○ Un proceso bloqueado por E/S debe especificar cuántos ciclos
+          necesita para generar la excepción y cuántos para satisfacerla antes
+          de volver a la cola de listos.
+
+    ● Interfaz Gráfica y Visualización:
+        ○ Visualización en tiempo real de las colas de procesos del sistema y de
+          los procesos culminados.
+        ○ Exhibición de los elementos del PCB por proceso: ID, Nombre, Status,
+          PC, MAR, Prioridad y Tiempo Restante de Deadline.
+        ○ Indicador visual de si se está ejecutando el Sistema Operativo
+          (durante el cambio de contexto o manejo de interrupción) o un
+          programa de usuario.
+        ○ Generación de un log de eventos de texto que registre decisiones:
+          "Interrupción detectada", "Proceso X movido a Suspendido", "Fallo de
+          Deadline en Proceso Y".
+
+    ● Métricas de Rendimiento y Gráficos:
+        ○ Mostrar un gráfico en tiempo real que compare la utilización del
+          procesador frente al tiempo.
+        ○ Incluir una métrica de Tasa de Éxito de Misión (porcentaje de
+          procesos que finalizaron antes de su deadline).
+        ○ Registro de promedios generales: throughput, tiempo de espera
+
+    ● Configuración del Sistema:
+        ○ Permitir modificar la duración del ciclo de ejecución (en ms o
+          segundos) en tiempo real para observar mejor el movimiento de la
+          simulación.
+        ○ El número de ciclo de reloj global debe ser visible en todo momento.
+
+NOTA: Con el fin de minimizar la complejidad del proyecto y estandarizar. Se debe
+asumir que:
+    ● Todas las instrucciones se ejecutan en un único ciclo de instrucción.
+    ● Por simplicidad, en este proyecto, todos los procesos se ejecutan de manera
+      lineal. Eso quiere decir que el PC y el MAR incrementarán una unidad por
+      cada ciclo del reloj.
+    ● El tratamiento de las excepciones debe realizarse con el uso de Threads, y
+      cada “Thread” de excepción debe regresar al procesador en donde fue
+      generado.
+
+Consideraciones Técnicas y Reglas de Entrega
+    ● Conformación de Equipos:
+        ○ El proyecto se realizará en parejas (máximo 2 personas).
+        ○ Excepcionalmente, se permitirán grupos de 3 solo si algún estudiante
+          queda sin pareja.
+        ○ No se permiten equipos conformados por estudiantes de diferentes
+          secciones.
+
+    ● Tecnología y Entorno:
+        ○ Lenguaje: Java (Versión 21 o superior).
+        ○ IDE: Estrictamente en NetBeans. Los programas que no se ejecuten
+          adecuadamente en este entorno serán calificados con 0 (cero).
+        ○ Restricción de Librerías: Sólo se permite el uso de librerías externas
+          para la visualización de gráficas (ej. JFreeChart), el manejo de
+          archivos JSON/CSV, y el uso de Hilos y Semáforos.
+        ○ Estructuras de Datos: Queda terminantemente prohibido el uso de
+          java.util.ArrayList, Queue, Stack, Vector o cualquier colección del
+          framework de Java. Los estudiantes deben programar sus propias
+          estructuras (listas enlazadas, colas, etc.) para gestionar los procesos y
+          el PCB.
+
+    ● Estándares de Desarrollo en GitHub (Obligatorio):
+        ○ El uso de un repositorio en GitHub es obligatorio. Proyecto sin
+          repositorio será calificado con 0 (cero).
+        ○ Uso de Ramas (Branches): No se permite trabajar únicamente en la
+          rama main. Se debe evidenciar el uso de ramas por funcionalidad (ej:
+          feat/scheduler, feat/gui, fix/interrupts), y se debe contar con una rama
+          develop.
+        ○ Gestión de Tareas (Issues): El equipo debe registrar las tareas
+          pendientes y errores encontrados mediante el sistema de Issues de
+          GitHub.
+        ○ Integración (Pull Requests): La fusión de código entre ramas debe
+          realizarse mediante Pull Requests comentados, simulando un entorno
+          de trabajo profesional.
+        ○ Contribución equitativa: El historial de commits debe reflejar una
+          participación equilibrada de ambos integrantes. Un desbalance
+          significativo en los aportes afectará la nota individual.
+        ○ Commits: Los mensajes deben ser descriptivos (ej: fix: corrige puntero
+          en cola de listos-suspendidos en lugar de update code) y el tamaño
+          debe ser limitado.
+
+    ● Documentación e Informe:
+        ○ Se debe entregar un informe en formato PDF que incluya:
+            ■ Descripción de los métodos más importantes.
+            ■ Explicación de la implementación de los hilos para el manejo de
+              interrupciones.
+            ■ Análisis Comparativo: Conclusiones sobre el rendimiento de
+              cada algoritmo (FCFS, RR, SRT, Prioridad, RMS y EDF) bajo
+              escenarios de estrés y cumplimiento de deadlines.
+        ○ No es necesario documentar cada línea de código, pero sí la lógica de
+          los algoritmos y la transición de estados.
+
+    ● Interfaz Gráfica (GUI):
+        ○ Es un requisito indispensable. Proyectos sin interfaz gráfica o que solo
+          funcionen por consola serán calificados con 0 (cero).
+        ○ La interfaz debe ser intuitiva y permitir visualizar el cambio de estados
+          del proceso en tiempo real.
+        ○ Es obligatorio implementar validaciones de tipo de dato y rango en
+          todos los campos de entrada. El sistema debe ser capaz de gestionar
+          entradas inválidas sin interrumpir el flujo del simulador.
+
+    ● Entrega y Evaluación:
+        ○ Fecha límite: Sábado de Semana 7 antes de las 7:00 AM.
+        ○ Canal: Enviar informe PDF y link del repositorio a:
+          sleon@correo.unimet.edu.ve y mginez@correo.unimet.edu.ve.
+        ○ Asignación Presencial (Defensa): Se realizará el Sábado de Semana
+          7. Es individual y obligatoria.
+            ■ Si un estudiante no asiste: 0 (cero) en el proyecto.
+            ■ Si un estudiante reprueba la defensa: Su nota máxima será de
+              10 (diez) puntos, independientemente de la calidad del código.
+            Es imperativo que ambos miembros dominen
