@@ -6,7 +6,10 @@ package modelo;
 import estructuras.Cola;
 import estructuras.Nodo;
 import java.util.concurrent.Semaphore;
+
 /**
+ * 5.3 — Semáforo binario para exclusión mutua en TODAS las
+ * operaciones sobre las colas compartidas y procesosEnRAM.
  *
  * @author carluchocp
  */
@@ -20,9 +23,10 @@ public class Memoria {
     private Cola<Proceso> colaTerminados;
 
     private int capacidadMaxima;
-    private int procesosEnRAM;  // Listos + Bloqueados + En Ejecución
+    private int procesosEnRAM;
 
-    private Semaphore semaforo;
+    // 5.3 — Semáforo binario (mutex) para exclusión mutua
+    private final Semaphore semaforo = new Semaphore(1, true);
 
     public Memoria(int capacidadMaxima) {
         this.colaNuevos = new Cola<>();
@@ -33,48 +37,53 @@ public class Memoria {
         this.colaTerminados = new Cola<>();
         this.capacidadMaxima = capacidadMaxima;
         this.procesosEnRAM = 0;
-        this.semaforo = new Semaphore(1);
     }
 
     // ======================== Cola de Nuevos ========================
 
     public void encolarNuevo(Proceso p) {
-        colaNuevos.encolar(p);
-    }
-
-    public Proceso desencolarNuevo() {
-        Proceso p = null;
+        semaforo.acquireUninterruptibly();
         try {
-            semaforo.acquire();
-            p = colaNuevos.desencolar();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            colaNuevos.encolar(p);
         } finally {
             semaforo.release();
         }
-        return p;
     }
 
-    // ======================== Admitir proceso (Nuevo → RAM o Suspendido) ========================
+    public Proceso desencolarNuevo() {
+        semaforo.acquireUninterruptibly();
+        try {
+            return colaNuevos.desencolar();
+        } finally {
+            semaforo.release();
+        }
+    }
+
+    // ======================== Admitir proceso ========================
 
     public void admitirProceso(Proceso p) {
-        if (procesosEnRAM < capacidadMaxima) {
-            p.setEstado(EstadoProceso.LISTO);
-            colaListos.encolar(p);
-            procesosEnRAM++;
-            System.out.println("[MEMORIA] " + p.getId() + " admitido -> Listo. En RAM: " + procesosEnRAM + "/" + capacidadMaxima);
-        } else {
-            p.setEstado(EstadoProceso.LISTO_SUSPENDIDO);
-            colaListosSuspendidos.encolar(p);
-            System.out.println("[MEMORIA] " + p.getId() + " admitido -> Listo/Suspendido (RAM llena). En RAM: " + procesosEnRAM + "/" + capacidadMaxima);
+        semaforo.acquireUninterruptibly();
+        try {
+            if (procesosEnRAM < capacidadMaxima) {
+                p.setEstado(EstadoProceso.LISTO);
+                colaListos.encolar(p);
+                procesosEnRAM++;
+                System.out.println("[MEMORIA] " + p.getId() + " admitido -> Listo. En RAM: " + procesosEnRAM + "/" + capacidadMaxima);
+            } else {
+                p.setEstado(EstadoProceso.LISTO_SUSPENDIDO);
+                colaListosSuspendidos.encolar(p);
+                System.out.println("[MEMORIA] " + p.getId() + " admitido -> Listo/Suspendido (RAM llena). En RAM: " + procesosEnRAM + "/" + capacidadMaxima);
+            }
+        } finally {
+            semaforo.release();
         }
     }
 
     // ======================== Cola de Listos ========================
 
     public void encolarListo(Proceso p) {
+        semaforo.acquireUninterruptibly();
         try {
-            semaforo.acquire();
             if (procesosEnRAM < capacidadMaxima) {
                 if (p.getEstado() != EstadoProceso.LISTO) {
                     p.setEstado(EstadoProceso.LISTO);
@@ -85,86 +94,77 @@ public class Memoria {
                 p.setEstado(EstadoProceso.LISTO_SUSPENDIDO);
                 colaListosSuspendidos.encolar(p);
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         } finally {
             semaforo.release();
         }
     }
 
-    /**
-     * Encola un proceso que YA está en RAM (ej: preemptado de CPU).
-     * No modifica el contador de procesosEnRAM.
-     */
     public void reEncolarListo(Proceso p) {
-        colaListos.encolar(p);
-    }
-
-    /**
-     * Desencola un proceso listo para asignar a CPU.
-     * El proceso sigue contando como "en RAM" (está en ejecución).
-     */
-    public Proceso desencolarListo() {
-        Proceso p = null;
+        semaforo.acquireUninterruptibly();
         try {
-            semaforo.acquire();
-            p = colaListos.desencolar();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            colaListos.encolar(p);
         } finally {
             semaforo.release();
         }
-        return p;
+    }
+
+    public Proceso desencolarListo() {
+        semaforo.acquireUninterruptibly();
+        try {
+            return colaListos.desencolar();
+        } finally {
+            semaforo.release();
+        }
     }
 
     // ======================== Cola de Bloqueados ========================
 
-    /**
-     * Encola un proceso bloqueado. El proceso ya estaba en RAM (CPU),
-     * así que no incrementa contador.
-     */
     public void encolarBloqueadoDirecto(Proceso p) {
-        colaBloqueados.encolar(p);
-    }
-
-    /**
-     * Mueve un proceso de bloqueado a listo (E/S terminó).
-     * No cambia contador porque sigue en RAM.
-     */
-    public void moverBloqueadoAListo(Proceso p) {
-        p.setEstado(EstadoProceso.LISTO);
-        colaListos.encolar(p);
-    }
-
-    public Proceso desencolarBloqueado() {
-        Proceso p = null;
+        semaforo.acquireUninterruptibly();
         try {
-            semaforo.acquire();
-            p = colaBloqueados.desencolar();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            colaBloqueados.encolar(p);
         } finally {
             semaforo.release();
         }
-        return p;
+    }
+
+    public void moverBloqueadoAListo(Proceso p) {
+        semaforo.acquireUninterruptibly();
+        try {
+            p.setEstado(EstadoProceso.LISTO);
+            colaListos.encolar(p);
+        } finally {
+            semaforo.release();
+        }
+    }
+
+    public Proceso desencolarBloqueado() {
+        semaforo.acquireUninterruptibly();
+        try {
+            return colaBloqueados.desencolar();
+        } finally {
+            semaforo.release();
+        }
     }
 
     // ======================== Cola de Terminados ========================
 
-    /**
-     * Cuando un proceso TERMINA, se saca de RAM y se encola en terminados.
-     * DEBE decrementar procesosEnRAM para liberar espacio.
-     */
-    public synchronized void encolarTerminado(Proceso p) {
-        colaTerminados.encolar(p);
-        procesosEnRAM--;
-        if (procesosEnRAM < 0) procesosEnRAM = 0;
-        System.out.println("[MEMORIA] " + p.getId() + " TERMINADO. En RAM: " + procesosEnRAM + "/" + capacidadMaxima);
+    public void encolarTerminado(Proceso p) {
+        semaforo.acquireUninterruptibly();
+        try {
+            colaTerminados.encolar(p);
+            procesosEnRAM--;
+            if (procesosEnRAM < 0) procesosEnRAM = 0;
+            System.out.println("[MEMORIA] " + p.getId() + " TERMINADO. En RAM: " + procesosEnRAM + "/" + capacidadMaxima);
+        } finally {
+            semaforo.release();
+        }
     }
 
     // ======================== Suspensión inteligente ========================
 
     private Proceso encontrarMenosUrgenteEnRAM() {
+        // NOTA: llamar solo dentro de bloque con semáforo ya adquirido
         Proceso menosUrgente = null;
         int maxDeadline = -1;
 
@@ -201,6 +201,7 @@ public class Memoria {
     }
 
     private void suspenderProcesoInterno(Proceso victima) {
+        // NOTA: llamar solo dentro de bloque con semáforo ya adquirido
         if (removerDeCola(colaListos, victima)) {
             victima.setEstado(EstadoProceso.LISTO_SUSPENDIDO);
             colaListosSuspendidos.encolar(victima);
@@ -234,6 +235,7 @@ public class Memoria {
     }
 
     private void reactivarSuspendidoSiHayEspacio() {
+        // NOTA: llamar solo dentro de bloque con semáforo ya adquirido
         while (procesosEnRAM < capacidadMaxima) {
             Proceso masUrgente = extraerMasUrgenteSuspendido();
             if (masUrgente == null) break;
@@ -297,52 +299,55 @@ public class Memoria {
     // ======================== Métodos públicos de suspensión ========================
 
     public void suspenderMenosUrgente() {
-        if (colaBloqueados.estaVacia()) return;
+        semaforo.acquireUninterruptibly();
+        try {
+            if (colaBloqueados.estaVacia()) return;
 
-        // Encontrar el menos urgente (mayor tiempoRestanteDeadline)
-        Proceso menosUrgente = null;
-        estructuras.Cola<Proceso> temp = new estructuras.Cola<>();
-        Proceso p;
+            Proceso menosUrgente = null;
+            Cola<Proceso> temp = new Cola<>();
+            Proceso p;
 
-        while ((p = colaBloqueados.desencolar()) != null) {
-            if (menosUrgente == null || p.getTiempoRestanteDeadline() > menosUrgente.getTiempoRestanteDeadline()) {
-                if (menosUrgente != null) temp.encolar(menosUrgente);
-                menosUrgente = p;
-            } else {
-                temp.encolar(p);
+            while ((p = colaBloqueados.desencolar()) != null) {
+                if (menosUrgente == null || p.getTiempoRestanteDeadline() > menosUrgente.getTiempoRestanteDeadline()) {
+                    if (menosUrgente != null) temp.encolar(menosUrgente);
+                    menosUrgente = p;
+                } else {
+                    temp.encolar(p);
+                }
             }
-        }
 
-        // Re-encolar los que no se suspendieron
-        while ((p = temp.desencolar()) != null) {
-            colaBloqueados.encolar(p);
-        }
+            while ((p = temp.desencolar()) != null) {
+                colaBloqueados.encolar(p);
+            }
 
-        // Suspender el menos urgente
-        if (menosUrgente != null) {
-            menosUrgente.setEstado(EstadoProceso.BLOQUEADO_SUSPENDIDO);
-            colaBloqueadosSuspendidos.encolar(menosUrgente);
-            procesosEnRAM--;
-            if (procesosEnRAM < 0) procesosEnRAM = 0;
-            System.out.println("[MEMORIA] Suspendido: " + menosUrgente.getId()
-                    + " Bloqueado -> Bloqueado/Suspendido. En RAM: " + procesosEnRAM + "/" + capacidadMaxima);
+            if (menosUrgente != null) {
+                menosUrgente.setEstado(EstadoProceso.BLOQUEADO_SUSPENDIDO);
+                colaBloqueadosSuspendidos.encolar(menosUrgente);
+                procesosEnRAM--;
+                if (procesosEnRAM < 0) procesosEnRAM = 0;
+                System.out.println("[MEMORIA] Suspendido: " + menosUrgente.getId()
+                        + " Bloqueado -> Bloqueado/Suspendido. En RAM: " + procesosEnRAM + "/" + capacidadMaxima);
+            }
+        } finally {
+            semaforo.release();
         }
     }
 
-    /**
-     * Mueve procesos de Listo/Suspendido a Listo mientras haya espacio en RAM.
-     * Mueve TODOS los que quepan, no solo 1.
-     */
-    public synchronized void intentarReactivar() {
-        while (!colaListosSuspendidos.estaVacia() && procesosEnRAM < capacidadMaxima) {
-            Proceso p = colaListosSuspendidos.desencolar();
-            if (p != null) {
-                p.setEstado(EstadoProceso.LISTO);
-                colaListos.encolar(p);
-                procesosEnRAM++;
-                System.out.println("[MEMORIA] Reactivado: " + p.getId()
-                        + " Listo/Suspendido -> Listo. En RAM: " + procesosEnRAM + "/" + capacidadMaxima);
+    public void intentarReactivar() {
+        semaforo.acquireUninterruptibly();
+        try {
+            while (!colaListosSuspendidos.estaVacia() && procesosEnRAM < capacidadMaxima) {
+                Proceso p = colaListosSuspendidos.desencolar();
+                if (p != null) {
+                    p.setEstado(EstadoProceso.LISTO);
+                    colaListos.encolar(p);
+                    procesosEnRAM++;
+                    System.out.println("[MEMORIA] Reactivado: " + p.getId()
+                            + " Listo/Suspendido -> Listo. En RAM: " + procesosEnRAM + "/" + capacidadMaxima);
+                }
             }
+        } finally {
+            semaforo.release();
         }
     }
 
@@ -351,8 +356,8 @@ public class Memoria {
     public int getCapacidadMaxima() { return capacidadMaxima; }
 
     public void setCapacidadMaxima(int nuevaCapacidad) {
+        semaforo.acquireUninterruptibly();
         try {
-            semaforo.acquire();
             this.capacidadMaxima = nuevaCapacidad;
             while (procesosEnRAM > capacidadMaxima) {
                 Proceso victima = encontrarMenosUrgenteEnRAM();
@@ -363,8 +368,6 @@ public class Memoria {
                 }
             }
             reactivarSuspendidoSiHayEspacio();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         } finally {
             semaforo.release();
         }
@@ -372,8 +375,23 @@ public class Memoria {
 
     // ======================== Consultas ========================
 
-    public boolean ramLlena() { return procesosEnRAM >= capacidadMaxima; }
-    public int getProcesosEnRAM() { return procesosEnRAM; }
+    public boolean ramLlena() {
+        semaforo.acquireUninterruptibly();
+        try {
+            return procesosEnRAM >= capacidadMaxima;
+        } finally {
+            semaforo.release();
+        }
+    }
+
+    public int getProcesosEnRAM() {
+        semaforo.acquireUninterruptibly();
+        try {
+            return procesosEnRAM;
+        } finally {
+            semaforo.release();
+        }
+    }
 
     // ======================== Getters de colas ========================
 
@@ -386,9 +404,16 @@ public class Memoria {
     public Semaphore getSemaforo() { return semaforo; }
 
     public void limpiar() {
+        semaforo.acquireUninterruptibly();
         try {
-            semaforo.acquire();
-            // Vaciar todas las colas
+            // Detener hilos de procesos en todas las colas antes de vaciar
+            detenerHilosDeCola(colaNuevos);
+            detenerHilosDeCola(colaListos);
+            detenerHilosDeCola(colaBloqueados);
+            detenerHilosDeCola(colaListosSuspendidos);
+            detenerHilosDeCola(colaBloqueadosSuspendidos);
+            // Los terminados ya tienen hilo detenido
+
             while (colaNuevos.desencolar() != null);
             while (colaListos.desencolar() != null);
             while (colaBloqueados.desencolar() != null);
@@ -396,10 +421,19 @@ public class Memoria {
             while (colaBloqueadosSuspendidos.desencolar() != null);
             while (colaTerminados.desencolar() != null);
             procesosEnRAM = 0;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         } finally {
             semaforo.release();
+        }
+    }
+
+    /**
+     * 5.2 — Detener hilos de procesos en una cola antes de limpiar.
+     */
+    private void detenerHilosDeCola(Cola<Proceso> cola) {
+        Nodo<Proceso> actual = cola.getPrimerNodo();
+        while (actual != null) {
+            actual.getContenido().detenerHilo();
+            actual = actual.getSiguiente();
         }
     }
 }

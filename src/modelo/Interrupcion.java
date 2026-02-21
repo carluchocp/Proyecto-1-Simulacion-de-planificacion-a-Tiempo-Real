@@ -4,10 +4,12 @@
  */
 package modelo;
 
+import java.util.concurrent.Semaphore;
+
 /**
  * Cada interrupción corre en un Thread independiente (6.3).
  * Suspende el proceso actual en la CPU objetivo (6.4),
- * ejecuta la ISR (6.5), re-planifica (6.6),
+ * ejecuta la ISR sincronizada con el reloj (6.5), re-planifica (6.6),
  * y restaura el proceso en la misma CPU (6.7).
  *
  * @author carluchocp
@@ -19,15 +21,17 @@ public class Interrupcion extends Thread {
     private final CPU cpuObjetivo;
     private final Reloj reloj;
     private final Planificador planificador;
+    private final Memoria memoria;
     private InterrupcionListener listener;
 
     public Interrupcion(int id, TipoInterrupcion tipo, CPU cpuObjetivo,
-                        Reloj reloj, Planificador planificador) {
+                        Reloj reloj, Planificador planificador, Memoria memoria) {
         this.idInterrupcion = id;
         this.tipo = tipo;
         this.cpuObjetivo = cpuObjetivo;
         this.reloj = reloj;
         this.planificador = planificador;
+        this.memoria = memoria;
         this.setName("INT-" + id + "-" + tipo.name());
         this.setDaemon(true);
     }
@@ -53,25 +57,24 @@ public class Interrupcion extends Thread {
                     + "] CPU inactiva, ejecutando ISR directamente");
         }
 
-        // 6.5 — Ejecutar ISR (consumir ciclos del reloj)
+        // 6.5 — Ejecutar ISR sincronizada con el reloj vía semáforo
         notificar("[ISR-CPU" + cpuObjetivo.getCpuId() + "] Ejecutando: "
                 + tipo.getDescripcion() + " (" + tipo.getCiclosISR() + " ciclos)");
 
-        int ciclosEjecutados = 0;
-        int cicloAnterior = reloj.getCicloGlobal();
+        // Registrar un semáforo en el reloj para recibir ticks
+        Semaphore semISR = reloj.registrarISR();
 
-        while (ciclosEjecutados < tipo.getCiclosISR()) {
-            int cicloActual = reloj.getCicloGlobal();
-            if (cicloActual > cicloAnterior) {
-                cicloAnterior = cicloActual;
-                ciclosEjecutados++;
+        try {
+            for (int i = 0; i < tipo.getCiclosISR(); i++) {
+                semISR.acquire(); // esperar exactamente un tick del reloj
             }
-            try {
-                Thread.sleep(2);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            notificar("[ISR-CPU" + cpuObjetivo.getCpuId()
+                    + "] ISR interrumpida prematuramente");
+        } finally {
+            // Desregistrar el semáforo del reloj
+            reloj.desregistrarISR(semISR);
         }
 
         notificar("[ISR-CPU" + cpuObjetivo.getCpuId() + "] Completada: "
@@ -82,6 +85,14 @@ public class Interrupcion extends Thread {
             cpuObjetivo.restaurarProceso(procesoSuspendido);
             notificar("[ISR-CPU" + cpuObjetivo.getCpuId() + "] Proceso "
                     + procesoSuspendido.getId() + " restaurado en misma CPU");
+        } else if (procesoSuspendido != null && procesoSuspendido.haTerminado()) {
+            // El proceso ya terminó, mandarlo a terminados
+            procesoSuspendido.setEstado(EstadoProceso.TERMINADO);
+            procesoSuspendido.detenerHilo();
+            memoria.encolarTerminado(procesoSuspendido);
+            cpuObjetivo.finalizarInterrupcion();
+            notificar("[ISR-CPU" + cpuObjetivo.getCpuId() + "] Proceso "
+                    + procesoSuspendido.getId() + " ya terminado, CPU liberada");
         } else {
             cpuObjetivo.finalizarInterrupcion();
             notificar("[ISR-CPU" + cpuObjetivo.getCpuId() + "] CPU liberada");
