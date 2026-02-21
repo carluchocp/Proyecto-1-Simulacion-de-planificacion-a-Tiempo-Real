@@ -124,13 +124,23 @@ public class Dashboard extends JFrame {
         panelIzqSup.add(lblAlgoritmoActual);
 
         // Botones de control en la barra superior
-        btnIniciar = new JButton("▶ Iniciar");
+        btnIniciar = new JButton("INICIAR");
         btnIniciar.setFont(new Font("Consolas", Font.BOLD, 14));
         btnIniciar.setBackground(new Color(0, 150, 0));
         btnIniciar.setForeground(Color.WHITE);
+        btnIniciar.setOpaque(true);
+        btnIniciar.setBorderPainted(false);
+        btnIniciar.setFocusPainted(false);
+        btnIniciar.setPreferredSize(new Dimension(120, 35));
 
-        btnPausar = new JButton("⏸ Pausar");
+        btnPausar = new JButton("PAUSAR");
         btnPausar.setFont(new Font("Consolas", Font.BOLD, 14));
+        btnPausar.setBackground(new Color(200, 150, 0));
+        btnPausar.setForeground(Color.WHITE);
+        btnPausar.setOpaque(true);
+        btnPausar.setBorderPainted(false);
+        btnPausar.setFocusPainted(false);
+        btnPausar.setPreferredSize(new Dimension(120, 35));
         btnPausar.setEnabled(false);
 
         btnIniciar.addActionListener(e -> iniciarSimulacion());
@@ -290,18 +300,18 @@ public class Dashboard extends JFrame {
 
     private void iniciarSimulacion() {
         if (!simulacionIniciada) {
-            // Aplicar algoritmo seleccionado antes de iniciar
             PoliticaPlanificacion pol = (PoliticaPlanificacion) cmbAlgoritmo.getSelectedItem();
             int quantum = (int) spnQuantum.getValue();
             planificador.cambiarAlgoritmo(pol, quantum);
 
             simulacionIniciada = true;
             btnIniciar.setEnabled(false);
+            btnIniciar.setBackground(Color.GRAY);
             btnPausar.setEnabled(true);
             agregarLog("Simulación iniciada con " + pol.getDescripcion());
         }
 
-        // Reanudar todos los componentes
+        reloj.reanudar();
         planificador.reanudar();
         cpu1.reanudar();
         cpu2.reanudar();
@@ -312,18 +322,22 @@ public class Dashboard extends JFrame {
 
     private void togglePausa() {
         if (planificador.isPausado()) {
+            reloj.reanudar();
             planificador.reanudar();
             cpu1.reanudar();
             cpu2.reanudar();
-            btnPausar.setText("⏸ Pausar");
+            btnPausar.setText("PAUSAR");
+            btnPausar.setBackground(new Color(200, 150, 0));
             lblEstadoSistema.setText("  [Ejecutando]  ");
             lblEstadoSistema.setForeground(Color.GREEN);
             agregarLog("Simulación reanudada");
         } else {
+            reloj.pausar();
             planificador.pausar();
             cpu1.pausar();
             cpu2.pausar();
-            btnPausar.setText("▶ Reanudar");
+            btnPausar.setText("REANUDAR");
+            btnPausar.setBackground(new Color(0, 150, 0));
             lblEstadoSistema.setText("  [Pausado]  ");
             lblEstadoSistema.setForeground(Color.ORANGE);
             agregarLog("Simulación pausada");
